@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd 
 import sklearn
 import matplotlib.pyplot as plt 
+import time
 
 # basic models are in basic.py
 from sklearn.datasets import fetch_california_housing
@@ -64,3 +65,54 @@ model.compile(loss='mse', optimizer=keras.optimizers.SGD(lr=1e-3))
 checkpoint_cb = keras.callbacks.ModelCheckpoint("tf10.h5", save_best_only=True)
 
 # tensorboard
+root_logdir = os.path.join(os.curdir, 'tflogs')
+def get_current_logpath():
+    run_id = time.strftime('run_%Y_%m_%d-%H_%M_%S')
+    return os.path.join(root_logdir, run_id)
+
+get_current_logpath()
+inputs = keras.layers.Input(shape=x_train.shape[1:])
+x = keras.layers.Dense(30, activation='relu')(inputs)
+x = keras.layers.Dense(30, activation='relu')(x)
+concat = keras.layers.concatenate([inputs, x])
+outputs = keras.layers.Dense(1)(concat)
+model = keras.models.Model(inputs=[inputs], outputs=[outputs])
+
+model.compile(
+    loss='mean_squared_error',
+    optimizer=keras.optimizers.SGD(lr=1e-3),
+)
+tensorboard_cb = keras.callbacks.TensorBoard(get_current_logpath())
+history = model.fit(x_train, y_train, epochs=30,
+                    validation_data=(x_valid, y_valid),
+                    callbacks=[checkpoint_cb, tensorboard_cb])
+
+# hyperparameter tuning
+def build_model(n_hidden=1, n_neurons=30, learning_rate=3e-3, input_shape=[8]):
+    model = keras.models.Sequential()
+    model.add(keras.layers.InputLayer(input_shape=input_shape))
+    for layer in range(n_hidden):
+        model.add(keras.layers.Dense(n_neurons, activation="relu"))
+    model.add(keras.layers.Dense(1))
+    optimizer = keras.optimizers.SGD(lr=learning_rate)
+    model.compile(loss="mse", optimizer=optimizer)
+    return model
+
+keras_reg = keras.wrappers.scikit_learn.KerasRegressor(build_model)
+keras_reg.fit(x_train, y_train, epochs=100,
+              validation_data=(x_valid, y_valid),
+              callbacks=[keras.callbacks.EarlyStopping(patience=10)])
+
+from scipy.stats import reciprocal
+from sklearn.model_selection import RandomizedSearchCV
+
+param_distribs = {
+    "n_hidden": [0, 1, 2, 3],
+    "n_neurons": np.arange(1, 100),
+    "learning_rate": reciprocal(3e-4, 3e-2),
+}
+
+rnd_search_cv = RandomizedSearchCV(keras_reg, param_distribs, n_iter=10, cv=3, verbose=2)
+rnd_search_cv.fit(x_train, y_train, epochs=100,
+                  validation_data=(x_valid, y_valid),
+                  callbacks=[keras.callbacks.EarlyStopping(patience=10)])
