@@ -2,3 +2,4 @@
 .vscode
 tflogs
 *.h5
+__pycache__/
