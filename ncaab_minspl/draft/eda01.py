@@ -5,7 +5,7 @@ import sqlalchemy
 from data_utilities import readSQL
 import argparse
 
-engine = sqlalchemy.engine_from_config(settings.ENGINE_URL, prefix='BASKETBALL_DEV.')
+engine = sqlalchemy.engine_from_config(settings.ENGINE_URL, prefix='BASKETBALL_NCAA_DEV.')
 
 query = readSQL.readSQL('ncaab_minspl/data/minutes.sql', season='AND Season = 2019')
 minutes = pd.read_sql(query['minutes'], engine)
@@ -18,4 +18,3 @@ mins.s = (
     .groupby(['GameId', 'TeamId'])
     .assign(s=minutes.Mins.sum())
 )
-
