@@ -1,0 +1,35 @@
+import boto3
+import pandas as pd
+from botocore.exceptions import ClientError
+
+s3 = boto3.client('s3')
+response = s3.list_buckets()
+
+ftsoff = pd.read_feather('~/efs/zqin/feather/ftsoff.feather')
+
+def upload_file(file_name, bucket, object_name=None):
+    """Upload a file to an S3 bucket
+
+    :param file_name: File to upload
+    :param bucket: Bucket to upload to
+    :param object_name: S3 object name. If not specified then file_name is used
+    :return: True if file was uploaded, else False
+    """
+
+    # If S3 object_name was not specified, use file_name
+    if object_name is None:
+        object_name = file_name
+
+    # Upload the file
+#     s3_client = boto3.client('s3')
+    try:
+        response = s3.upload_file(file_name, bucket, object_name)
+    except ClientError as e:
+        logging.error(e)
+        return False
+    return True
+
+s3.put_object(Body=ftsoff, Bucket='bla-s3-football-data', Key='cache/ftsoff.feather')
+s3.upload_file('ftsoff.feather', 'bla-s3-football-data', 'cache/ftsoff.feather')
+
+s3.download_file('bla-s3-football-data', 'cache/ftsoff.feather', 'ftsoff.feather')
