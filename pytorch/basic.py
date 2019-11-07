@@ -19,7 +19,7 @@ class net(nn.Module):
         self.fc2 = nn.Linear(1, 1)
         self.fc3 = nn.Linear(1, 1)
         
-    def forward(self):
+    def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.softmax(x)

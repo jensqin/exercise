@@ -1,5 +1,6 @@
 import boto3
 import pandas as pd
+import logging
 from botocore.exceptions import ClientError
 
 s3 = boto3.client('s3')
