@@ -3,3 +3,6 @@
 tflogs
 *.h5
 __pycache__/
+
+# data
+*.feather
