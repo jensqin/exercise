@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt 
 import torch
 from torch import nn
+import torch.nn.functional as F
+from torch.utils.data import dataloader
+from torchvision import datasets, transforms
 
 # linear regression
 input_size = 1
@@ -42,4 +45,9 @@ plt.ylabel(r"$\hat{y}$", rotation=0)
 plt.title('residual plot')
 
 # logistic regression
+batch_size = 64
+learning_rate = 1e-3
+num_epochs = 100
+
+train_dataset = datasets.FashionMNIST(root='../data', train=True)
 
