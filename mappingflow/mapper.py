@@ -1,7 +1,7 @@
 import pandas as pd 
 import fuzzywuzzy as fuzz 
 
-class BaseMerger:
+class BaseMapper:
     """
     Merge Two DataFrames.
     """
@@ -9,6 +9,8 @@ class BaseMerger:
         self.left = df_left
         self.right = df_right
         self.merged = None
+        self.left_mismatch = None
+        self.right_mismatch = None
 
     def __repr__(self):
         leftstr = f"Left DataFrame Has {len(self.left.index)} Rows, "
@@ -22,3 +24,15 @@ class BaseMerger:
     def FuzzyMerge(self, *args, **kwargs):
         df_merged = pd.merge(self.left, self.right, **kwargs)
 
+class layer:
+    """
+    Mapping layer.
+    """
+    def __init__(self):
+        self.name = 'what'
+
+class ExactMerge(layer):
+    """
+    asdfasdf
+    """
+    

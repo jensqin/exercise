@@ -1,5 +1,6 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
+import time
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -49,5 +50,42 @@ batch_size = 64
 learning_rate = 1e-3
 num_epochs = 100
 
-train_dataset = datasets.FashionMNIST(root='../data', train=True)
+train_dataset = datasets.FashionMNIST(
+    root='../data', train=True, transform=transforms.ToTensor(), 
+    download=True
+)
+test_dataset = datasets.FashionMNIST(
+    root='../datas', train=False, transform=transforms.ToTensor()
+)
+train_loader = dataloader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = dataloader(test_dataset, batch_size=batch_size, shuffle=False)
 
+class logitReg(nn.Module):
+    def __init__(self, indim, nclass):
+        super(logitReg, self).__init__()
+        self.logistic = nn.Linear(indim, nclass)
+
+    def forward(self, x):
+        out = self.logistic(x)
+        return out
+
+model = logitReg(28 ** 2, 10)
+use_gpu = torch.cuda.is_available()
+if use_gpu:
+    model = model.cuda
+
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
+
+for epoch in range(num_epochs):
+    print('*' * 10)
+    print(f'Epoch {epoch + 1}')
+    since = time.time()
+    run_loss = 0.0
+    run_acc = 0.0
+    model.train()
+    for i, data in enumerate(train_loader, 1):
+        img, label = data
+        img = img.view(img.size(0), -1)
+        out = model(img)
+        loss = criterion(out, label)
