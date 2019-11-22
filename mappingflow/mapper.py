@@ -17,6 +17,12 @@ class BaseMapper:
         rightstr = f"Right DataFrame Has {len(self.right.index)} Rows, "
         mergedstr = f"Merged DataFrame Has {len(self.merged.index)} Rows."
         return (leftstr + rightstr + mergedstr)
+
+    def flow(self):
+        raise AssertionError
+
+    def __call__(self):
+        a = 1
     
     def ExactMerge(self, *args, **kwargs):
         df_merged = pd.merge(self.left, self.right, **kwargs)
@@ -35,4 +41,27 @@ class ExactMerge(layer):
     """
     asdfasdf
     """
-    
+
+import functools
+class what:
+
+    def __init__(self, x):
+        self.v1 = x
+        self.v2 = x + 1
+
+    def _deco(func):
+        @functools.wraps(func)
+        def wrapper(self):
+            func(self)
+            print('this is deco')
+        return wrapper
+
+    _deco = staticmethod(_deco)
+
+    @_deco
+    def eg1(self):
+        print('this is eg1')
+
+    @_deco 
+    def eg2(self):
+        print('this is eg2')
