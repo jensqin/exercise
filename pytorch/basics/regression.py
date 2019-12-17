@@ -2,11 +2,10 @@ import numpy as np
 import pandas as pd 
 import matplotlib.pyplot as plt 
 import altair as alt
-import time
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.utils.data import dataloader
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 # linear regression
@@ -64,8 +63,8 @@ train_dataset = datasets.FashionMNIST(
 test_dataset = datasets.FashionMNIST(
     root='../datas', train=False, transform=transforms.ToTensor()
 )
-train_loader = dataloader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = dataloader(test_dataset, batch_size=batch_size, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
 class logitReg(nn.Module):
     def __init__(self, indim, nclass):
