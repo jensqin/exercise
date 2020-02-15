@@ -16,6 +16,11 @@ class ForeachFlow(FlowSpec):
     @step
     def a(self):
         self.title = f'{self.input} processed'
+        self.next(self.b)
+
+    @step
+    def b(self):
+        self.title += ' done'
         self.next(self.join)
 
     @step
