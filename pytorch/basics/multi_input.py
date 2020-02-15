@@ -11,16 +11,16 @@ class MyModel(nn.Module):
         self.fc1 = nn.Linear(3, 3)
         self.fc2 = nn.Linear(5, 1)
 
-    def forward(self, x):
-        z = self.fc1(x[0])
-        z = torch.cat([z, x[1]], dim=1)
+    def forward(self, x, y):
+        z = self.fc1(x)
+        z = torch.cat([z, y], dim=1)
         z = self.fc2(z)
         return z
 
 
-xx = [torch.rand(3), torch.rand(2)]
+xx = [torch.rand((2, 3)), torch.rand(2, 2)]
 model = MyModel()
-model(xx)
+model(*xx)
 
 df = pd.DataFrame(1, index=np.arange(10), columns=list("abc"))
 y = np.arange(10) + 0.1
@@ -40,12 +40,12 @@ class MyData(Dataset):
         xx2 = torch.rand(2, dtype=torch.float)
         yy = self.y[idx]
         yy = torch.tensor(yy, dtype=torch.float)
-        return [xx, xx2], yy
+        return xx, xx2, yy
 
 
 example = MyData(df, y)
 loader = DataLoader(example, batch_size=2, shuffle=False)
 
-for xx, yy in loader:
-    zz = model(xx)
+for xx, xx2, yy in loader:
+    zz = model(xx, xx2)
     print(zz)
