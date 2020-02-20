@@ -36,6 +36,11 @@ class HelloFlow(FlowSpec):
         """
         sample end
         """
+        with S3(s3root="s3://bla-basketball-models/examples") as s3:
+            example = s3.get("example.json")
+            print(example.text)
+            dict_text = json.loads(example.text)
+            print(type(dict_text))  # dict
         print("end.")
 
 
