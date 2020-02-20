@@ -1,6 +1,6 @@
 import json
 
-from metaflow import FlowSpec, step, IncludeFile
+from metaflow import FlowSpec, step, IncludeFile, S3
 
 
 class HelloFlow(FlowSpec):
@@ -24,6 +24,8 @@ class HelloFlow(FlowSpec):
         """
         hello world function
         """
+        with S3(s3root="s3://bla-basketball-models/examples") as s3:
+            s3.put("example.json", self.params)
         print(type(self.params))
         print(json.loads(self.params))
         print("hello world")
