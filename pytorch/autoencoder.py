@@ -61,4 +61,5 @@ class AutoEncoder(nn.Module):
         return reconstructed
 
 
-dat1 = torch.rand((3, 4))
+dat1 = torch.rand((100, 50))
+dat = dat1 + torch.range(1, 100).reshape(100, 1)
