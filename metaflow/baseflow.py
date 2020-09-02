@@ -30,4 +30,4 @@ class SubFlow(BaseFlow):
 
 
 if __name__ == "__main__":
-    SubFlow()
+    BaseFlow()
