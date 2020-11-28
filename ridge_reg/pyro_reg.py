@@ -31,6 +31,7 @@ class BayesianRegression(PyroModule):
 
 model = BayesianRegression(13, 1)
 guide = AutoDiagonalNormal(model)
+# guide = AutoLowRankMultivariateNormal(model)
 
 adam = pyro.optim.ClippedAdam({"lr": 0.03})
 svi = SVI(model, guide, adam, loss=Trace_ELBO())

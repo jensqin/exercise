@@ -57,8 +57,7 @@ class AutoEncoder(nn.Module):
         activation = self.decoder_hidden_layer(code)
         activation = torch.relu(activation)
         activation = self.decoder_output_layer(activation)
-        reconstructed = torch.relu(activation)
-        return reconstructed
+        return torch.relu(activation)
 
 
 dat1 = torch.rand((100, 50))

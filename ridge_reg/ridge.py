@@ -1,6 +1,5 @@
 from datetime import datetime
 
-import scipy
 import altair as alt
 import numpy as np
 import pandas as pd
@@ -50,6 +49,7 @@ skridge.fit(X, y)
 print(f"{datetime.now()-start} seconds")
 skyhat = skridge.predict(X)
 metrics.mean_squared_error(skyhat, y)
+# mse: 21.89840819759002
 
 kf = KFold(506)
 result = list(kf.split(X))
@@ -83,38 +83,38 @@ def benchmark(type, n_fold=8, **kwargs):
         modeltime.append(time_span)
         yhat = model.predict(X_test)
         scores.append(metrics.mean_squared_error(yhat, y_test))
-    return pd.DataFrame({"rmse": scores, "time": modeltime})
+    return pd.DataFrame({"mse": scores, "time": modeltime})
 
 
 fr_df = benchmark("fast_ridge", n_fold=8, score="loocv")
 fr_df.describe()  # 33.46049333430216, gcv: 31.64
-alt.Chart(fr_df).mark_point().encode(x="rmse", y="time")
+alt.Chart(fr_df).mark_point().encode(x="mse", y="time")
 
 fr_df = benchmark("fast_ridge", n_fold=8)
 fr_df.describe()  # 2-group: 31.85, 'all': 31.62
-alt.Chart(fr_df).mark_point().encode(x="rmse", y="time")
+alt.Chart(fr_df).mark_point().encode(x="mse", y="time")
 # for multi-group, gcv is worse
 
 for i in range(1, 9):
     fr_df = benchmark("fast_ridge", n_fold=8, num_groups=i)
-    print(f"{i} groups: loss {fr_df['rmse'].mean()}")
+    print(f"{i} groups: loss {fr_df['mse'].mean()}")
 
 
 # given number of groups
 for i in range(2, 13):
     fr_df = benchmark("fast_ridge", n_fold=8, num_groups=i)
-    print(fr_df["rmse"].mean())
+    print(fr_df["mse"].mean())
 # 2 is best 31.58
 
 fr_df = benchmark("fast_ridge", n_fold=8, grouper=lambda X, y: grouper1)
 fr_df.describe()  # 31.16
-alt.Chart(fr_df).mark_point().encode(x="rmse", y="time")
+alt.Chart(fr_df).mark_point().encode(x="mse", y="time")
 
 r_df = benchmark("ridge", 8)
 r_df.describe()  # 36.65282989796395
-alt.Chart(r_df).mark_point().encode(x="rmse", y="time")
+alt.Chart(r_df).mark_point().encode(x="mse", y="time")
 
 rcv_df = benchmark("ridgecv", 8)
 rcv_df.describe()  # 30.449386520871208
 # 30.17
-# 3M 1M
+# mse: 24.2155
