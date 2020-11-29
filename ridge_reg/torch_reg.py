@@ -1,10 +1,11 @@
+import itertools
+import math
+
 from sklearn.preprocessing import StandardScaler
 import torch
 from torch import nn
-from torch import tensor
+from torch.nn import functional as F
 from torch.optim import AdamW, SGD
-from ignite.engine import Engine, Events, create_supervised_trainer
-
 from ray import tune
 from ray.tune.suggest.hyperopt import HyperOptSearch
 from ray.tune.schedulers import ASHAScheduler
@@ -18,29 +19,113 @@ y_ts = torch.as_tensor(y, dtype=torch.float).view(-1, 1)
 
 
 class RidgeReg(nn.Module):
-    def __init__(self, dim_in, dim_out, bias=True, grouper=0):
+    def __init__(self, dim_in, dim_out, bias=True, group=None):
         """
         init method
         """
         super().__init__()
-        self.beta = nn.Linear(dim_in, dim_out)
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        assert dim_in == sum(
+            len(x) for x in group.items()
+        ), "Input dimension and groups mismatch!"
+        if group is None:
+            self.weight = nn.parameter.Parameter(torch.Tensor(dim_out, dim_in))
+        else:
+            self.beta = nn.ParameterDict({nn.parameter.Parameter(torch.Tensor())})
 
-    def forward(self, x):
+    def _parse_group(self):
+        """
+        parse group argument
+        """
+        pass
+
+    def forward(self, input):
         """
         forward method
         """
-        return self.beta(x)
+        return self.beta(input)
 
 
-# ridge = nn.Linear(13, 1)
-# mse_critirion = nn.MSELoss()
-# optimizer = SGD(ridge.parameters(), lr=0.001, weight_decay=0.1)
+class GroupRidge(nn.Module):
+    """
+    group ridge regression
+    """
+
+    def __init__(self, in_features, out_features, group=None, bias=True):
+        """
+        init method
+        """
+        super(GroupRidge, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.group = group
+        if group is None:
+            self.group_weight = nn.ParameterList(
+                [
+                    nn.parameter.Parameter(torch.Tensor(out_features, 1))
+                    for _ in range(in_features)
+                ]
+            )
+        else:
+            group_size = self._parse_group()
+            self.group_weight = nn.ParameterList(
+                [
+                    nn.parameter.Parameter(torch.Tensor(out_features, x))
+                    for x in group_size
+                ]
+            )
+        self.weight = torch.cat(list(self.group_weight), dim=1)
+        if bias:
+            self.bias = nn.parameter.Parameter(torch.Tensor(out_features))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def _parse_group(self):
+        """
+        parse group argument
+        """
+        group_size = [len(x) for x in self.group]
+        assert self.in_features == sum(
+            group_size
+        ), "Input dimension and group size mismatch!"
+        elements = itertools.chain.from_iterable(self.group)
+        assert all(
+            0 <= x < self.in_features for x in elements
+        ), "Elements of group MUST be less than or equal to in_features."
+        return group_size
+
+    def reset_parameters(self) -> None:
+        for param in self.group_weight:
+            nn.init.kaiming_uniform_(param, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        self.weight = torch.cat(list(self.group_weight), dim=1)
+        return F.linear(input, self.weight, self.bias)
+
+    def extra_repr(self) -> str:
+        return "in_features={}, out_features={}, bias={}".format(
+            self.in_features, self.out_features, self.bias is not None
+        )
+
+
+ridge = GroupRidge(13, 1)
+mse_critirion = nn.MSELoss()
+opt_param = [{"params": [ridge.group_weight[x]], "weigth_decay": 0.1} for x in range(13)]
+optimizer = SGD(opt_param, lr=0.001)
+# optimizer = SGD(ridge.parameters(), lr=0.01, weight_decay=0.1)
+# optimizer = SGD(ridge.group_weight[0], lr=0.01, weight_decay=0.1)
 
 
 class RegTrainable(tune.Trainable):
     def setup(self, config):
         # config (dict): A dict of hyperparameters
-        self.ridge = RidgeReg(13, 1)
+        self.ridge = GroupRidge(13, 1)
         self.mse_critirion = nn.MSELoss()
         self.optimizer = AdamW(
             self.ridge.parameters(), lr=config["lr"], weight_decay=config["l2_reg"]
@@ -58,18 +143,16 @@ class RegTrainable(tune.Trainable):
         return {"score": val_loss}
 
 
-# for epoch in range(1000):
-#     if epoch % 999 == 0:
-#         print(f"epoch: {epoch}")
-#     out = ridge(X_ts)
-#     loss = mse_critirion(out, y_ts)
-#     optimizer.zero_grad()
-#     loss.backward()
-#     optimizer.step()
+for _ in range(1000):
+    out = ridge(X_ts)
+    loss = mse_critirion(out, y_ts)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
 
-# with torch.no_grad():
-#     val_loss = mse_critirion(ridge(X_ts), y_ts)
-#     print(val_loss)
+with torch.no_grad():
+    val_loss = mse_critirion(ridge(X_ts), y_ts)
+    print(val_loss)
 
 # Create a HyperOpt search space
 config = {"l2_reg": tune.loguniform(1e-2, 0.5), "lr": tune.loguniform(1e-3, 0.1)}
