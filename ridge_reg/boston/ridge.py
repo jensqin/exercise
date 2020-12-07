@@ -7,41 +7,41 @@ from sklearn.linear_model import Ridge, RidgeCV
 from sklearn.datasets import load_boston
 from sklearn.model_selection import KFold
 from sklearn import metrics
-import peak_engines
+# import peak_engines
 
 X, y = load_boston(return_X_y=True)
 result = load_boston()
-model = peak_engines.RidgeRegressionModel(normalize=True, grouping_mode="none")
+# model = peak_engines.RidgeRegressionModel(normalize=True, grouping_mode="none")
 
-start = datetime.now()
-model.fit(X, y)
-print(f"{datetime.now()-start} seconds")
+# start = datetime.now()
+# model.fit(X, y)
+# print(f"{datetime.now()-start} seconds")
 
-print("alpha =", model.regularization_)
-for i in model.alpha_:
-    print(np.log(i))
-np.argsort(model.alpha_)
-# groups 0 (x <-100): 8, 7
-# 1 (-100 < x < -3): 4, 9, 0, 10, 12
-# 2 (-3 < x < 0): 1, 5, 11, 3
-# 3 (x > 0): 6, 2
-yhat = model.predict(X)
-metrics.mean_squared_error(yhat, y)
+# print("alpha =", model.regularization_)
+# for i in model.alpha_:
+#     print(np.log(i))
+# np.argsort(model.alpha_)
+# # groups 0 (x <-100): 8, 7
+# # 1 (-100 < x < -3): 4, 9, 0, 10, 12
+# # 2 (-3 < x < 0): 1, 5, 11, 3
+# # 3 (x > 0): 6, 2
+# yhat = model.predict(X)
+# metrics.mean_squared_error(yhat, y)
 
-model = peak_engines.RidgeRegressionModel(
-    normalize=True, num_groups=2
-)
-model.fit(X, y)
-print("alpha =", model.regularization_)
+# model = peak_engines.RidgeRegressionModel(
+#     normalize=True, num_groups=2
+# )
+# model.fit(X, y)
+# print("alpha =", model.regularization_)
 
 grouper1 = np.zeros(13)
 grouper1[[4, 9, 0, 10, 12]] = 1
 grouper1[[1, 5, 11, 3]] = 2
 grouper1[[6, 2]] = 3
 grouper1 = grouper1.astype("int").tolist()
-model = peak_engines.RidgeRegressionModel(normalize=True, grouper=lambda X, y: grouper1)
-model.fit(X, y)
-print("alpha =", model.regularization_)
+# model = peak_engines.RidgeRegressionModel(normalize=True, grouper=lambda X, y: grouper1)
+# model.fit(X, y)
+# print("alpha =", model.regularization_)
 
 skridge = RidgeCV()
 start = datetime.now()
@@ -61,11 +61,13 @@ def benchmark(type, n_fold=8, **kwargs):
     """
     if type == "fast_ridge":
         if kwargs:
-            model = peak_engines.RidgeRegressionModel(normalize=True, **kwargs)
+            # model = peak_engines.RidgeRegressionModel(normalize=True, **kwargs)
+            pass
         else:
-            model = peak_engines.RidgeRegressionModel(
-                normalize=True, grouping_mode="none"
-            )
+            # model = peak_engines.RidgeRegressionModel(
+            #     normalize=True, grouping_mode="none"
+            # )
+            pass
     elif type == "ridge":
         model = Ridge(normalize=True)
     elif type == "ridgecv":
