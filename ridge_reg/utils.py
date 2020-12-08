@@ -1,6 +1,8 @@
 from pickle import NONE
 from sklearn.model_selection import train_test_split
 
+root_dir = "~/repository/exercise/ridge_reg"
+
 
 def train_val_test_split(
     df, val=0.15, test=0.1, shuffle=False, stratify_cols=None, random_state=None

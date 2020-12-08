@@ -1,3 +1,6 @@
+import os
+from argparse import ArgumentParser
+
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from ray import tune
@@ -7,9 +10,15 @@ from ray.tune.integration.pytorch_lightning import TuneReportCallback
 
 from nba_torch import NBADataModule, NBAGroupRidge
 
+from utils import root_dir
+
 
 def train_nba(config, num_epochs=10):
-    nba = NBADataModule(batch_size=config["batch_size"])
+    nba = NBADataModule(
+        data_path=os.path.join(root_dir, "data/nba_nw.csv"),
+        num_workders=4,
+        # batch_size=config["batch_size"],
+    )
     model = NBAGroupRidge(
         lr=config["lr"], weight_decay=list(config["weight_decay"].values())
     )
@@ -22,7 +31,7 @@ def train_nba(config, num_epochs=10):
     trainer.fit(model, datamodule=nba)
 
 
-def tune_nba_bohb(num_samples=100, num_epochs=30):
+def tune_nba_bohb(num_samples=100, num_epochs=50):
     config = {
         "lr": tune.loguniform(1e-4, 1e-1),
         "weight_decay": {str(x): tune.uniform(0, 0.2) for x in range(6)},
@@ -49,10 +58,6 @@ def tune_nba_bohb(num_samples=100, num_epochs=30):
 
 
 if __name__ == "__main__":
-    # config = {f"weight_decay_{x}": tune.loguniform(1e-2, 0.5) for x in range(6)}
-    # config.update({"lr": tune.loguniform(1e-3, 0.1)})
-    # hyperopt = OptunaSearch(metric="score", mode="min")
-    # asha = ASHAScheduler(metric="score", mode="min")
     # # Execute 10 trials using HyperOpt and stop after 10 iterations
     # analysis = tune.run(
     #     train_nba,
@@ -63,4 +68,8 @@ if __name__ == "__main__":
     #     stop={"training_iteration": 10},
     #     verbose=2,
     # )
-    tune_nba_bohb()
+    parser = ArgumentParser()
+    parser.add_argument("--n_samples", type=int, default=100)
+    parser.add_argument("--n_epochs", type=int, default=30)
+    args = parser.parse_args()
+    tune_nba_bohb(args.n_samples, args.n_epochs)

@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from datetime import datetime
-import os
+
+# import os
 
 import numpy as np
 import pandas as pd
@@ -27,7 +28,7 @@ class NBADataset(Dataset):
         self.df = df.reset_index(drop=True)
         # print(self.df.dtypes)
         self.idx = df.index
-        self.x = [
+        x_cols = [
             ["HomeAway", "ScoreDiff"],
             ["OffTeam"],
             ["DefTeam"],
@@ -36,26 +37,26 @@ class NBADataset(Dataset):
             ["P6", "P7", "P8", "P9", "P10"],
             ["age6", "age7", "age8", "age9", "age10"],
         ]
-        self.y = ["y"]
+        y_cols = ["y"]
+        self.x = [self.pd_to_tensor(self.df[col]) for col in x_cols]
+        self.y = self.pd_to_tensor(self.df[y_cols])
 
     def __len__(self):
         return len(self.idx)
 
     @staticmethod
     def pd_to_tensor(x):
-        xarray = x.values[0]
+        xarray = x.values
         return torch.from_numpy(xarray)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
-        elif isinstance(idx, int):
-            idx = [idx]
-        sample_df = self.df.iloc[idx, :]
-        return (
-            [self.pd_to_tensor(sample_df[col]) for col in self.x],
-            self.pd_to_tensor(sample_df[self.y]),
-        )
+        # elif isinstance(idx, int):
+        #     idx = [idx]
+        sample_x = [t[idx, :] for t in self.x]
+        sample_y = self.y[idx, :]
+        return sample_x, sample_y
 
 
 class NBADataModule(pl.LightningDataModule):
@@ -67,24 +68,25 @@ class NBADataModule(pl.LightningDataModule):
         self, data_path="data/nba_nw.csv", num_workders=1, batch_size=32, **kwargs
     ):
         super().__init__()
-        self.data_path = os.path.join("~/repository/exercise/ridge_reg", data_path)
+        # self.data_path = os.path.join(os.getcwd(), data_path)
         self.num_workders = num_workders
         self.batch_size = batch_size
-        self.stratify_cols = ["OffTeam", "DefTeam"]
-        self.float_cols = ["y", "HomeAway", "ScoreDiff"] + [
-            f"age{x}" for x in range(1, 11)
-        ]
-
-    def setup(self, stage=None):
-        type_dict = {key: np.float32 for key in self.float_cols}
+        stratify_cols = ["OffTeam", "DefTeam"]
+        float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
+        # int_cols = stratify_cols + [f"P{x}" for x in range(1, 11)]
+        type_dict = {key: np.float32 for key in float_cols}
+        # type_dict.update({key: np.int16 for key in int_cols})
         # type_dict.update({"y": np.int32})
-        self.nba = pd.read_csv(self.data_path, dtype=type_dict)
+        self.nba = pd.read_csv(data_path, dtype=type_dict)
         train, val, test = train_val_test_split(
-            self.nba, shuffle=True, stratify_cols=self.stratify_cols, random_state=None
+            self.nba, shuffle=True, stratify_cols=stratify_cols, random_state=None
         )
         self.train = NBADataset(train)
         self.val = NBADataset(val)
         self.test = NBADataset(test)
+
+    def setup(self, stage=None):
+        pass
 
     def train_dataloader(self):
         """
