@@ -65,7 +65,13 @@ class NBADataModule(pl.LightningDataModule):
     """
 
     def __init__(
-        self, data_path="data/nba_nw.csv", num_workders=1, batch_size=32, **kwargs
+        self,
+        data_path="data/nba_nw.csv",
+        num_workders=1,
+        batch_size=32,
+        val_size=0.15,
+        test_size=0.1,
+        **kwargs,
     ):
         super().__init__()
         # self.data_path = os.path.join(os.getcwd(), data_path)
@@ -79,7 +85,12 @@ class NBADataModule(pl.LightningDataModule):
         # type_dict.update({"y": np.int32})
         self.nba = pd.read_csv(data_path, dtype=type_dict)
         train, val, test = train_val_test_split(
-            self.nba, shuffle=True, stratify_cols=stratify_cols, random_state=None
+            self.nba,
+            val=val_size,
+            test=test_size,
+            shuffle=True,
+            stratify_cols=stratify_cols,
+            random_state=None,
         )
         self.train = NBADataset(train)
         self.val = NBADataset(val)
@@ -281,8 +292,8 @@ class NBAGroupRidge(NBAEncoder):
         # optimizer = SGD(opt_param, lr=self.lr, momentum=0.8)
         dense_opt = AdamW(dense_param, lr=self.lr)
         sparse_opt = Adamax(sparse_param, lr=self.lr)
-        dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=500)
-        sparse_scheduler = OneCycleLR(sparse_opt, max_lr=0.1, total_steps=500)
+        dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=1000)
+        sparse_scheduler = OneCycleLR(sparse_opt, max_lr=0.1, total_steps=1000)
         return [dense_opt, sparse_opt], [dense_scheduler, sparse_scheduler]
 
     def mse_loss(self, batch):
@@ -337,14 +348,15 @@ if __name__ == "__main__":
         monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min"
     )
     dict_args = vars(args)
-    nba = NBADataModule(**dict_args)
+    pl.seed_everything(0)
+    nba = NBADataModule(test_size=0.01, **dict_args)
     model = NBAGroupRidge(**dict_args)
     tb_logger = TensorBoardLogger(save_dir=args.logdir)
     trainer = pl.Trainer.from_argparse_args(
         args,
         logger=tb_logger,
         callbacks=[nba_early_stopping],
-        max_epochs=5,
+        max_epochs=30,
         # precision=16,
     )
     start = datetime.now()
