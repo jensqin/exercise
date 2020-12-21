@@ -13,7 +13,7 @@ from torch.utils.data.dataloader import DataLoader
 
 from nba_pyro import NBABayesEncoder
 from nba_torch import NBADataset
-from utils import load_nba, pyro_summary, transform_to_tensors
+from utils import load_nba, pyro_summary, transform_to_array
 
 
 def train_nba(config, num_epochs=10):
@@ -26,7 +26,7 @@ def train_nba(config, num_epochs=10):
     svi = SVI(model, guide, adam, loss=Trace_ELBO())
     pyro.clear_param_store()
 
-    x_val, y_val = transform_to_tensors(df_val)
+    x_val, y_val = transform_to_array(df_val)
 
     for _ in range(num_epochs):
         for batch in iter(train_loader):
@@ -92,3 +92,5 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=5)
     args = parser.parse_args()
     tune_nba_pyro(args.n_sample, args.max_epochs)
+    # Best hyperparameters are:
+    # {"lr": 0.0003823155587682684, "scale_global": 1}

@@ -42,13 +42,13 @@ def load_nba(split_mode=None, test=0.1, val=0.15, to_tensor=False):
     stratify_cols = ["OffTeam", "DefTeam"]
     if split_mode is None:
         if to_tensor:
-            return transform_to_tensors(df)
+            return transform_to_array(df)
         else:
             return df
     elif split_mode == "test":
         train, test = train_test_split(df, test_size=test, stratify=df[stratify_cols])
         if to_tensor:
-            train, test = transform_to_tensors(train), transform_to_tensors(test)
+            train, test = transform_to_array(train), transform_to_array(test)
         return train, test
     else:
         train, val, test = train_val_test_split(
@@ -56,14 +56,14 @@ def load_nba(split_mode=None, test=0.1, val=0.15, to_tensor=False):
         )
         if to_tensor:
             train, val, test = (
-                transform_to_tensors(train),
-                transform_to_tensors(val),
-                transform_to_tensors(test),
+                transform_to_array(train),
+                transform_to_array(val),
+                transform_to_array(test),
             )
         return train, val, test
 
 
-def transform_to_tensors(df):
+def transform_to_array(df, to_tensor=True):
     """
     transform nba data to tensors
     """
@@ -78,8 +78,11 @@ def transform_to_tensors(df):
         ["age6", "age7", "age8", "age9", "age10"],
     ]
     y_cols = ["y"]
-    x = [torch.from_numpy(df[col].values) for col in x_cols]
-    y = torch.from_numpy(df[y_cols].values)
+    x = [df[col].values for col in x_cols]
+    y = df[y_cols].values
+    if to_tensor:
+        x = [torch.from_numpy(t) for t in x]
+        y = torch.from_numpy(y)
     return x, y
 
 

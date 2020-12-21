@@ -21,7 +21,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataloader import DataLoader
 
 from nba_torch import NBADataModule, NBADataset, NBAEncoder
-from utils import load_nba, pyro_summary, transform_to_tensors
+from utils import load_nba, pyro_summary, transform_to_array
 
 
 class NBABayesEncoderModule(pl.LightningModule):
@@ -380,7 +380,7 @@ if __name__ == "__main__":
         if i % 1 == 0:
             print(f"epoch {i + 1}: loss {loss}")
 
-    x, y = transform_to_tensors(test)
+    x, y = transform_to_array(test)
     predictive = Predictive(
         model,
         guide=guide,
