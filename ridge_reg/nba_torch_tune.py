@@ -42,7 +42,7 @@ def train_nba(config, num_epochs=10):
     trainer.fit(model, datamodule=nba)
 
 
-def tune_nba_bohb(num_samples=100, num_epochs=50):
+def tune_nba_torch(num_samples=100, num_epochs=50):
     config = {
         "lr": tune.loguniform(1e-4, 1e-1),
         "weight_decay": {str(x): tune.uniform(0, 0.2) for x in range(6)},
@@ -63,7 +63,7 @@ def tune_nba_bohb(num_samples=100, num_epochs=50):
         search_alg=algo,
         scheduler=scheduler,
         progress_reporter=reporter,
-        name="tune_nba_asha",
+        name="tune_nba_torch",
         # stop={"training_iteration": num_epochs},
     )
     print("Best hyperparameters are: ", analysis.best_config)
@@ -96,4 +96,4 @@ if __name__ == "__main__":
     parser.add_argument("--n_samples", type=int, default=100)
     parser.add_argument("--n_epochs", type=int, default=30)
     args = parser.parse_args()
-    tune_nba_bohb(args.n_samples, args.n_epochs)
+    tune_nba_torch(args.n_samples, args.n_epochs)

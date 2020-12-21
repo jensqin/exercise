@@ -1,4 +1,9 @@
-from pickle import NONE
+import os
+from typing import Tuple
+
+import numpy as np
+import pandas as pd
+import torch
 from sklearn.model_selection import train_test_split
 
 root_dir = "~/repository/exercise/ridge_reg"
@@ -25,3 +30,66 @@ def train_val_test_split(
         random_state=random_state,
     )
     return df_train, df_val, df_test
+
+
+def load_nba(split_mode=None, test=0.1, val=0.15, to_tensor=False):
+    """
+    load nba data
+    """
+    float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
+    type_dict = {key: np.float32 for key in float_cols}
+    df = pd.read_csv(os.path.join(root_dir, "data/nba_nw.csv"), dtype=type_dict)
+    stratify_cols = ["OffTeam", "DefTeam"]
+    if split_mode is None:
+        if to_tensor:
+            return transform_to_tensors(df)
+        else:
+            return df
+    elif split_mode == "test":
+        train, test = train_test_split(df, test_size=test, stratify=df[stratify_cols])
+        if to_tensor:
+            train, test = transform_to_tensors(train), transform_to_tensors(test)
+        return train, test
+    else:
+        train, val, test = train_val_test_split(
+            df, test=test, val=val, stratify_cols=stratify_cols, shuffle=True
+        )
+        if to_tensor:
+            train, val, test = (
+                transform_to_tensors(train),
+                transform_to_tensors(val),
+                transform_to_tensors(test),
+            )
+        return train, val, test
+
+
+def transform_to_tensors(df):
+    """
+    transform nba data to tensors
+    """
+    df = df.reset_index(drop=True)
+    x_cols = [
+        ["HomeAway", "ScoreDiff"],
+        ["OffTeam"],
+        ["DefTeam"],
+        ["P1", "P2", "P3", "P4", "P5"],
+        ["age1", "age2", "age3", "age4", "age5"],
+        ["P6", "P7", "P8", "P9", "P10"],
+        ["age6", "age7", "age8", "age9", "age10"],
+    ]
+    y_cols = ["y"]
+    x = [torch.from_numpy(df[col].values) for col in x_cols]
+    y = torch.from_numpy(df[y_cols].values)
+    return x, y
+
+
+def pyro_summary(samples):
+    return {
+        k: {
+            "mean": torch.mean(v, 0).detach().numpy(),
+            "std": torch.std(v, 0).detach().numpy(),
+            "5%": v.kthvalue(int(len(v) * 0.05), dim=0)[0].detach().numpy(),
+            "95%": v.kthvalue(int(len(v) * 0.95), dim=0)[0].detach().numpy(),
+        }
+        for k, v in samples.items()
+    }
