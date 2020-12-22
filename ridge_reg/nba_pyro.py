@@ -1,6 +1,9 @@
 from argparse import ArgumentParser
+import time
+import pickle
 
 import numpy as np
+from numpy.lib.npyio import load
 import pandas as pd
 import pyro
 import pytorch_lightning as pl
@@ -262,7 +265,7 @@ class NBABayesEncoder(PyroModule):
         defp = self.def_player(defp)
         mean = fc + offt + deft + offpa + defpa + offp + defp
         mean = torch.flatten(mean)
-        sigma = pyro.sample("sigma", dist.HalfCauchy(10.0))
+        sigma = pyro.sample("sigma", dist.HalfCauchy(1.0))
         with pyro.plate("data", fc.size(0)):
             _ = pyro.sample("obs", dist.Normal(mean, sigma), obs=y)
         return mean
@@ -345,9 +348,19 @@ class NBAGuide(PyroModule):
         )
 
 
+def val_mse(predictive, x):
+    """
+    validation mse
+    """
+    samples = predictive(x)
+    pred_summary = pyro_summary(samples)
+    mu = pred_summary["_RETURN"]
+    return metrics.mean_squared_error(mu["mean"], y_test)
+
+
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=0.01)
     args = parser.parse_args()
     model = NBABayesEncoder()
@@ -362,45 +375,61 @@ if __name__ == "__main__":
     # dfset = NBADataset(pd.read_csv("data/nba_nw.csv", dtype=type_dict))
     # loader = DataLoader(dfset, batch_size=32)
     # tmp = iter(loader)
-    train, test = load_nba(split_mode="test", test=0.2)
+    # train, test = load_nba(split_mode="test", test=0.2)
+    train = load_nba(path="data/nba_train.csv")
+    test = load_nba(path="data/nba_test.csv")
     train_loader = DataLoader(NBADataset(train), batch_size=32)
 
     adam = pyro.optim.AdamW({"lr": args.lr})
     svi = SVI(model, guide, adam, loss=Trace_ELBO())
 
-    pyro.clear_param_store()
-    # num_epochs = 3
-    for i in range(args.epochs):
-        loss = 0
-        for batch in iter(train_loader):
-            x, y = batch
-            y = torch.flatten(y)
-            loss = svi.step(x, y)
-            loss /= len(y)
-        if i % 1 == 0:
-            print(f"epoch {i + 1}: loss {loss}")
-
-    x, y = transform_to_array(test)
+    X_test, y_test = transform_to_array(test)
     predictive = Predictive(
         model,
         guide=guide,
-        num_samples=500,
+        num_samples=1000,
         return_sites=("fc.weight", "obs", "_RETURN"),
     )
-    samples = predictive(x)
+
+    pyro.clear_param_store()
+    # num_epochs = 3
+    start = time.time()
+    patience = 5
+    mse_benchmark = np.zeros(patience)
+    for i in range(args.epochs):
+        loss = 0
+        for batch in iter(train_loader):
+            X, y = batch
+            y = torch.flatten(y)
+            loss = svi.step(X, y)
+            loss /= len(y)
+        ith_mse = val_mse(predictive, X_test)
+        if i % 1 == 0:
+            print(f"epoch {i + 1}: loss {loss}")
+            if i > patience and ith_mse > mse_benchmark.max():
+                print(f"Early stopping at {i}th iteration. MSE: {ith_mse}.")
+                break
+            mse_benchmark[i % patience] = ith_mse
+    print(time.time() - start)
+
+    samples = predictive(X_test)
     pred_summary = pyro_summary(samples)
     mu = pred_summary["_RETURN"]
     yhat = pred_summary["obs"]
-    predictions = pd.DataFrame(
-        {
-            "mu_mean": mu["mean"],
-            "mu_perc_5": mu["5%"],
-            "mu_perc_95": mu["95%"],
-            "y_mean": yhat["mean"],
-            "y_perc_5": yhat["5%"],
-            "y_perc_95": yhat["95%"],
-            "true_y": y,
-        }
-    )
-    mse = metrics.mean_squared_error(mu["mean"], y)
-    print(f"MSE: {mse}")
+    # predictions = pd.DataFrame(
+    #     {
+    #         "mu_mean": mu["mean"],
+    #         "mu_perc_5": mu["5%"],
+    #         "mu_perc_95": mu["95%"],
+    #         "y_mean": yhat["mean"],
+    #         "y_perc_5": yhat["5%"],
+    #         "y_perc_95": yhat["95%"],
+    #         "true_y": y,
+    #     }
+    # )
+    mse = metrics.mean_squared_error(mu["mean"], y_test)
+    print(f"Test MSE: {mse}")
+
+# python nba_pyro.py --lr 0.001 --epochs 30
+# 146.47113513946533
+# Test MSE: 1.3741856813430786

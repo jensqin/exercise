@@ -32,13 +32,15 @@ def train_val_test_split(
     return df_train, df_val, df_test
 
 
-def load_nba(split_mode=None, test=0.1, val=0.15, to_tensor=False):
+def load_nba(
+    path="data/nba_nw.csv", split_mode=None, test=0.1, val=0.15, to_tensor=False
+):
     """
     load nba data
     """
     float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
     type_dict = {key: np.float32 for key in float_cols}
-    df = pd.read_csv(os.path.join(root_dir, "data/nba_nw.csv"), dtype=type_dict)
+    df = pd.read_csv(os.path.join(root_dir, path), dtype=type_dict)
     stratify_cols = ["OffTeam", "DefTeam"]
     if split_mode is None:
         if to_tensor:
