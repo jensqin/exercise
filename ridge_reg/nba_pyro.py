@@ -24,7 +24,7 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataloader import DataLoader
 
 from nba_torch import NBADataModule, NBADataset, NBAEncoder
-from utils import load_nba, pyro_summary, transform_to_array
+from utils import load_nba, summary_samples, transform_to_array
 
 
 class NBABayesEncoderModule(pl.LightningModule):
@@ -190,7 +190,7 @@ class NBABayesEncoder(PyroModule):
     NBA hierachical bayesian encoder
     """
 
-    def __init__(self, n_team=5, n_player=85, n_group=7, scale_global=1):
+    def __init__(self, n_team=30, n_player=531, n_group=7, scale_global=1):
         super().__init__()
         # n_team, n_player = NBAEncoder.n_team_and_player(
         #     team_data_path, player_data_path
@@ -205,51 +205,51 @@ class NBABayesEncoder(PyroModule):
         tau = pyro.sample("tau", dist.HalfCauchy(scale_global))
         lam = pyro.sample("lambda", dist.HalfCauchy(local_vec).to_event())
         # sig = (lam ** 2) * (tau ** 2)
-        sig = tau * lam
+        self.sig = tau * lam
         # ws = pyro.sample("ws", dist.Normal(0, sig).to_event())
         self.fc = PyroModule[nn.Linear](2, 1)
-        self.fc.weight = PyroSample(dist.Normal(0.0, sig[0]).expand([1, 2]).to_event(2))
+        self.fc.weight = PyroSample(dist.Normal(0.0, 1.0).expand([1, 2]).to_event(2))
         self.fc.bias = PyroSample(
             dist.StudentT(4, 0.0, scale_icept).expand([1]).to_event(1)
         )
-        self.off_team = PyroModule[nn.Embedding](n_team, n_team_emb)
-        self.off_team.weight = PyroSample(
-            dist.Normal(0.0, sig[1]).expand([n_team, 1]).to_event(2)
-        )
-        self.def_team = PyroModule[nn.Embedding](n_team, n_team_emb)
-        self.def_team.weight = PyroSample(
-            dist.Normal(0.0, sig[2]).expand([n_team, 1]).to_event(2)
-        )
-        self.off_player = PyroModule[nn.EmbeddingBag](
-            n_player, n_player_emb, mode="sum"
-        )
-        self.off_player.weight = PyroSample(
-            dist.Normal(0.0, sig[3]).expand([n_player, 1]).to_event(2)
-        )
-        self.off_player_age = PyroModule[nn.EmbeddingBag](
-            n_player, n_player_emb, mode="sum"
-        )
-        self.off_player.weight = PyroSample(
-            dist.Normal(0.0, sig[4]).expand([n_player, 1]).to_event(2)
-        )
-        self.def_player = PyroModule[nn.EmbeddingBag](
-            n_player, n_player_emb, mode="sum"
-        )
-        self.def_player.weight = PyroSample(
-            dist.Normal(0.0, sig[5]).expand([n_player, 1]).to_event(2)
-        )
-        self.def_player_age = PyroModule[nn.EmbeddingBag](
-            n_player, n_player_emb, mode="sum"
-        )
-        self.def_player_age.weight = PyroSample(
-            dist.Normal(0.0, sig[6]).expand([n_player, 1]).to_event(2)
-        )
-        player_dim = n_player_emb * 4
-        self.bn_player = nn.BatchNorm1d(player_dim)
-        self.fin = nn.Linear(2 + n_team_emb * 2 + n_player_emb * 4, 3)
-        self.sparse = nn.ModuleList(
-            [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
-        )
+        # self.off_team = PyroModule[nn.Embedding](n_team, n_team_emb)
+        # self.off_team.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_team, 1]).to_event(1)
+        # )
+        # self.def_team = PyroModule[nn.Embedding](n_team, n_team_emb)
+        # self.def_team.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_team, 1]).to_event(1)
+        # )
+        # self.off_player = PyroModule[nn.EmbeddingBag](
+        #     n_player, n_player_emb, mode="sum"
+        # )
+        # self.off_player.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_player, 1]).to_event(1)
+        # )
+        # self.off_player_age = PyroModule[nn.EmbeddingBag](
+        #     n_player, n_player_emb, mode="sum"
+        # )
+        # self.off_player.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_player, 1]).to_event(1)
+        # )
+        # self.def_player = PyroModule[nn.EmbeddingBag](
+        #     n_player, n_player_emb, mode="sum"
+        # )
+        # self.def_player.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_player, 1]).to_event(1)
+        # )
+        # self.def_player_age = PyroModule[nn.EmbeddingBag](
+        #     n_player, n_player_emb, mode="sum"
+        # )
+        # self.def_player_age.weight = PyroSample(
+        #     dist.Normal(0.0, 1.0).expand([n_player, 1]).to_event(1)
+        # )
+        # player_dim = n_player_emb * 4
+        # self.bn_player = nn.BatchNorm1d(player_dim)
+        # self.fin = nn.Linear(2 + n_team_emb * 2 + n_player_emb * 4, 3)
+        # self.sparse = nn.ModuleList(
+        #     [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
+        # )
 
     def forward(self, x, y=None):
         """
@@ -257,13 +257,21 @@ class NBABayesEncoder(PyroModule):
         """
         fc, offt, deft, offp, offpa, defp, defpa = x
         fc = self.fc(fc)
-        offt = self.off_team(offt).view(-1, 1)
-        deft = self.def_team(deft).view(-1, 1)
-        offpa = self.off_player_age(offp, per_sample_weights=offpa)
-        defpa = self.def_player_age(defp, per_sample_weights=defpa)
-        offp = self.off_player(offp)
-        defp = self.def_player(defp)
-        mean = fc + offt + deft + offpa + defpa + offp + defp
+        # offt = self.off_team(offt).view(-1, 1)
+        # deft = self.def_team(deft).view(-1, 1)
+        # offpa = self.off_player_age(offp, per_sample_weights=offpa)
+        # defpa = self.def_player_age(defp, per_sample_weights=defpa)
+        # offp = self.off_player(offp)
+        # defp = self.def_player(defp)
+        mean = (
+            fc * self.sig[0]
+            # + offt * self.sig[1]
+            # + deft * self.sig[2]
+            # + offpa * self.sig[3]
+            # + defpa * self.sig[4]
+            # + offp * self.sig[5]
+            # + defp * self.sig[6]
+        )
         mean = torch.flatten(mean)
         sigma = pyro.sample("sigma", dist.HalfCauchy(1.0))
         with pyro.plate("data", fc.size(0)):
@@ -348,14 +356,14 @@ class NBAGuide(PyroModule):
         )
 
 
-def val_mse(predictive, x):
+def val_mse(predictive, x, y):
     """
     validation mse
     """
     samples = predictive(x)
-    pred_summary = pyro_summary(samples)
+    pred_summary = summary_samples(samples)
     mu = pred_summary["_RETURN"]
-    return metrics.mean_squared_error(mu["mean"], y_test)
+    return metrics.mean_squared_error(mu["mean"], y)
 
 
 if __name__ == "__main__":
@@ -376,13 +384,17 @@ if __name__ == "__main__":
     # loader = DataLoader(dfset, batch_size=32)
     # tmp = iter(loader)
     # train, test = load_nba(split_mode="test", test=0.2)
-    train = load_nba(path="data/nba_train.csv")
-    test = load_nba(path="data/nba_test.csv")
+    train = load_nba(path="data/nba_2018/nba_2018_train.csv")
+    val = load_nba(path="data/nba_2018/nba_2018_test.csv")
+    test = val
+    # test = load_nba(path="data/nba_2018/test.csv")
     train_loader = DataLoader(NBADataset(train), batch_size=32)
 
-    adam = pyro.optim.AdamW({"lr": args.lr})
+    adam = pyro.optim.Adamax({"lr": args.lr})
     svi = SVI(model, guide, adam, loss=Trace_ELBO())
 
+    X_train, y_train = transform_to_array(val)
+    X_val, y_val = transform_to_array(val)
     X_test, y_test = transform_to_array(test)
     predictive = Predictive(
         model,
@@ -394,6 +406,7 @@ if __name__ == "__main__":
     pyro.clear_param_store()
     # num_epochs = 3
     start = time.time()
+    # early stopping
     patience = 5
     mse_benchmark = np.zeros(patience)
     for i in range(args.epochs):
@@ -403,17 +416,22 @@ if __name__ == "__main__":
             y = torch.flatten(y)
             loss = svi.step(X, y)
             loss /= len(y)
-        ith_mse = val_mse(predictive, X_test)
+        train_mse = val_mse(predictive, X_train, y_train)
+        ith_mse = val_mse(predictive, X_val, y_val)
         if i % 1 == 0:
-            print(f"epoch {i + 1}: loss {loss}")
+            print(
+                f"epoch {i + 1}: train loss {loss}, train mse {train_mse}, val mse {ith_mse}"
+            )
             if i > patience and ith_mse > mse_benchmark.max():
-                print(f"Early stopping at {i}th iteration. MSE: {ith_mse}.")
+                print(f"Early stopping at {i}th epoch. MSE: {ith_mse}.")
                 break
             mse_benchmark[i % patience] = ith_mse
     print(time.time() - start)
 
     samples = predictive(X_test)
-    pred_summary = pyro_summary(samples)
+    pred_summary = summary_samples(samples)
+    with open("data/samples/svi.pkl", "wb") as f:
+        pickle.dump(pred_summary, f)
     mu = pred_summary["_RETURN"]
     yhat = pred_summary["obs"]
     # predictions = pd.DataFrame(

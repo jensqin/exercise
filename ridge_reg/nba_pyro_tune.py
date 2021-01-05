@@ -13,16 +13,19 @@ from torch.utils.data.dataloader import DataLoader
 
 from nba_pyro import NBABayesEncoder
 from nba_torch import NBADataset
-from utils import load_nba, pyro_summary, transform_to_array
+from utils import load_nba, summary_samples, transform_to_array
 
 
 def train_nba(config, num_epochs=10):
-    df_train, df_val = load_nba(split_mode="test", test=0.2)
+    # df_train, df_val = load_nba(split_mode="test", test=0.2)
+    df_train = load_nba("data/nba_2018/nba_2018_train.csv")
+    df_val = load_nba("data/nba_2018/nba_2018_test.csv")
     train = NBADataset(df_train)
     train_loader = DataLoader(train, batch_size=32)
-    model = NBABayesEncoder(scale_global=config["scale_global"])
+    # model = NBABayesEncoder(scale_global=config["scale_global"])
+    model = NBABayesEncoder()
     guide = AutoLowRankMultivariateNormal(model)
-    adam = pyro.optim.AdamW({"lr": config["lr"]})
+    adam = pyro.optim.Adamax({"lr": config["lr"]})
     svi = SVI(model, guide, adam, loss=Trace_ELBO())
     pyro.clear_param_store()
 
@@ -37,11 +40,11 @@ def train_nba(config, num_epochs=10):
         predictive = Predictive(
             model,
             guide=guide,
-            num_samples=800,
+            num_samples=1000,
             return_sites=("fc.weight", "obs", "_RETURN"),
         )
         samples = predictive(x_val)
-        pred_summary = pyro_summary(samples)
+        pred_summary = summary_samples(samples)
         mu = pred_summary["_RETURN"]
         # yhat = pred_summary["obs"]
         # predictions = pd.DataFrame(
@@ -62,14 +65,15 @@ def train_nba(config, num_epochs=10):
 def tune_nba_pyro(num_samples=100, num_epochs=50):
     config = {
         "lr": tune.loguniform(1e-4, 1e-1),
-        "scale_global": tune.choice([1, 2, 3, 4]),
+        # "scale_global": tune.choice([1, 2, 4]),
     }
     algo = TuneBOHB(max_concurrent=4)
     scheduler = HyperBandForBOHB(
         max_t=num_epochs, time_attr="training_iteration", reduction_factor=3
     )
     reporter = tune.CLIReporter(
-        parameter_columns=["lr"], metric_columns=["score", "training_iteration"],
+        parameter_columns=["lr", "scale_global"],
+        metric_columns=["score", "training_iteration"],
     )
     analysis = tune.run(
         tune.with_parameters(train_nba, num_epochs=num_epochs),
@@ -88,9 +92,10 @@ def tune_nba_pyro(num_samples=100, num_epochs=50):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--n_sample", type=int, default=10)
-    parser.add_argument("--max_epochs", type=int, default=5)
+    parser.add_argument("--n_sample", type=int, default=30)
+    parser.add_argument("--max_epochs", type=int, default=30)
     args = parser.parse_args()
     tune_nba_pyro(args.n_sample, args.max_epochs)
     # Best hyperparameters are:
-    # {"lr": 0.0003823155587682684, "scale_global": 1}
+    # {'lr': 0.008716439286715795, 'scale_global': 1}
+    # mse: 1.28909

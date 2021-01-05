@@ -13,7 +13,7 @@ from numpyro.diagnostics import hpdi
 from numpyro.infer import MCMC, NUTS, Predictive
 from sklearn import metrics
 
-from utils import load_nba, transform_to_array
+from utils import load_nba, transform_to_array, summary_samples
 
 NDArrayType = Union[np.ndarray, jnp.ndarray]
 
@@ -112,8 +112,8 @@ def posterior_predict(samples: dict, X: NDArrayType, rng_key=random.PRNGKey(0)) 
     """
     get predictions from samples
     """
-    pred = Predictive(nba_model, samples)
-    return pred(rng_key, X)
+    pred = Predictive(nba_model, samples)(rng_key, X)
+    return summary_samples(pred)
 
 
 if __name__ == "__main__":
@@ -135,5 +135,7 @@ if __name__ == "__main__":
     samples = run_inference(X_train, y_train, rng_key=rng_key)
     print(f"Runtime: {time.time() - start}")
     predictions = posterior_predict(samples, X_test, rng_key=rng_key_predict)
+    with open("data/samples/mcmc.pkl", "wb") as f:
+        pickle.dump(predictions, f)
     preds = jnp.mean(predictions["obs"], axis=0)
     print(metrics.mean_squared_error(preds, y_test))

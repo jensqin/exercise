@@ -93,7 +93,32 @@ if __name__ == "__main__":
     #     },
     # }
     parser = ArgumentParser()
-    parser.add_argument("--n_samples", type=int, default=100)
-    parser.add_argument("--n_epochs", type=int, default=30)
+    parser.add_argument("--n_samples", type=int, default=50)
+    parser.add_argument("--n_epochs", type=int, default=15)
     args = parser.parse_args()
     tune_nba_torch(args.n_samples, args.n_epochs)
+    # 2018 mse: 1.36313
+    # Best hyperparameters are:
+    # {
+    #     "lr": 0.0006394159690362793,
+    #     "weight_decay": {
+    #         "0": 0.08390024504310523,
+    #         "1": 0.1870588988483033,
+    #         "2": 0.19103583835202897,
+    #         "3": 0.023985152534154463,
+    #         "4": 0.1971911986048563,
+    #         "5": 0.021063980012231264,
+    #     },
+    # }
+    # SGD loss: 1.35446
+    # {
+    #     "lr": 0.0020747915677990433,
+    #     "weight_decay": {
+            # "0": 0.02090030251079458,
+            # "1": 0.08499998457075844,
+            # "2": 0.12153418314918588,
+            # "3": 0.1272122955065476,
+            # "4": 0.03716296686196379,
+            # "5": 0.11646519017723754,
+    #     },
+    # }

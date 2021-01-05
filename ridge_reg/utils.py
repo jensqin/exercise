@@ -10,7 +10,7 @@ root_dir = "~/repository/exercise/ridge_reg"
 
 
 def train_val_test_split(
-    df, val=0.15, test=0.1, shuffle=False, stratify_cols=None, random_state=None
+    df, val=0.15, test=0.1, shuffle=True, stratify_cols=None, random_state=None
 ):
     """
     training validation test data split
@@ -33,7 +33,7 @@ def train_val_test_split(
 
 
 def load_nba(
-    path="data/nba_nw.csv", split_mode=None, test=0.1, val=0.15, to_tensor=False
+    path="data/nba_2018/nba_2018.csv", split_mode=None, test=0.1, val=0.15, to_tensor=False
 ):
     """
     load nba data
@@ -88,7 +88,7 @@ def transform_to_array(df, to_tensor=True):
     return x, y
 
 
-def pyro_summary(samples):
+def summary_samples(samples):
     return {
         k: {
             "mean": torch.mean(v, 0).detach().numpy(),

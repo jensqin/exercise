@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.optim import AdamW, Adamax
+from torch.optim import AdamW, Adamax, SGD
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
@@ -16,7 +16,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from utils import train_val_test_split
+from utils import train_val_test_split, load_nba
 
 
 class NBADataset(Dataset):
@@ -66,7 +66,7 @@ class NBADataModule(pl.LightningDataModule):
 
     def __init__(
         self,
-        data_path="data/nba_nw.csv",
+        # data_path="data/nba_nw.csv",
         num_workders=1,
         batch_size=32,
         val_size=0.15,
@@ -83,15 +83,18 @@ class NBADataModule(pl.LightningDataModule):
         type_dict = {key: np.float32 for key in float_cols}
         # type_dict.update({key: np.int16 for key in int_cols})
         # type_dict.update({"y": np.int32})
-        self.nba = pd.read_csv(data_path, dtype=type_dict)
-        train, val, test = train_val_test_split(
-            self.nba,
-            val=val_size,
-            test=test_size,
-            shuffle=True,
-            stratify_cols=stratify_cols,
-            random_state=None,
-        )
+        # self.nba = pd.read_csv(data_path, dtype=type_dict)
+        # train, val, test = train_val_test_split(
+        #     self.nba,
+        #     val=val_size,
+        #     test=test_size,
+        #     shuffle=True,
+        #     stratify_cols=stratify_cols,
+        #     random_state=None,
+        # )
+        train = load_nba(path="data/nba_2018/nba_2018_train.csv")
+        val = load_nba(path="data/nba_2018/nba_2018_test.csv")
+        test = val
         self.train = NBADataset(train)
         self.val = NBADataset(val)
         self.test = NBADataset(test)
@@ -159,7 +162,7 @@ class NBAEncoder(pl.LightningModule):
         # n_team, n_player = NBAEncoder.n_team_and_player(
         #     team_data_path, player_data_path
         # )
-        n_team, n_player = 5, 85
+        n_team, n_player = 30, 531
         n_team_emb, n_player_emb = 1, 1
         self.lr = lr
         self.wd = weight_decay
@@ -236,12 +239,13 @@ class NBAGroupRidge(NBAEncoder):
             return torch.cat([offt, deft, offp, offpa, defp, defpa], dim=1)
         return fc + offt + deft + offpa + defpa + offp + defp
 
-    def training_step(self, batch, batch_idx, optimizer_idx):
+    # def training_step(self, batch, batch_idx, optimizer_idx):
+    def training_step(self, batch, batch_idx):
         """
         training step
         """
         loss = self.mse_loss(batch)
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, on_step=False, on_epoch=True)
         return loss
 
     def training_epoch_end(self, training_step_outputs):
@@ -269,32 +273,33 @@ class NBAGroupRidge(NBAEncoder):
         """
         configure optimizer
         """
-        # opt_param = [
-        #     {"params": self.fc.parameters(), "weight_decay": 0},
-        #     {"params": self.off_team.parameters(), "weight_decay": self.wd[0]},
-        #     {"params": self.def_team.parameters(), "weight_decay": self.wd[1]},
-        #     {"params": self.off_player.parameters(), "weight_decay": self.wd[2]},
-        #     {"params": self.off_player_age.parameters(), "weight_decay": self.wd[3],},
-        #     {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
-        #     {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
-        # ]
-        dense_param = [
+        opt_param = [
             {"params": self.fc.parameters(), "weight_decay": 0},
             {"params": self.off_team.parameters(), "weight_decay": self.wd[0]},
             {"params": self.def_team.parameters(), "weight_decay": self.wd[1]},
-        ]
-        sparse_param = [
             {"params": self.off_player.parameters(), "weight_decay": self.wd[2]},
-            {"params": self.off_player_age.parameters(), "weight_decay": self.wd[3]},
+            {"params": self.off_player_age.parameters(), "weight_decay": self.wd[3],},
             {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
             {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
         ]
-        # optimizer = SGD(opt_param, lr=self.lr, momentum=0.8)
-        dense_opt = AdamW(dense_param, lr=self.lr)
-        sparse_opt = Adamax(sparse_param, lr=self.lr)
-        dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=1000)
-        sparse_scheduler = OneCycleLR(sparse_opt, max_lr=0.1, total_steps=1000)
-        return [dense_opt, sparse_opt], [dense_scheduler, sparse_scheduler]
+        # dense_param = [
+        #     {"params": self.fc.parameters(), "weight_decay": 0},
+        #     {"params": self.off_team.parameters(), "weight_decay": self.wd[0]},
+        #     {"params": self.def_team.parameters(), "weight_decay": self.wd[1]},
+        # ]
+        # sparse_param = [
+        #     {"params": self.off_player.parameters(), "weight_decay": self.wd[2]},
+        #     {"params": self.off_player_age.parameters(), "weight_decay": self.wd[3]},
+        #     {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
+        #     {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
+        # ]
+        optimizer = SGD(opt_param, lr=self.lr)
+        # dense_opt = AdamW(dense_param, lr=self.lr)
+        # sparse_opt = Adamax(sparse_param, lr=self.lr)
+        # dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=1000)
+        # sparse_scheduler = OneCycleLR(sparse_opt, max_lr=0.1, total_steps=1000)
+        # return [dense_opt, sparse_opt], [dense_scheduler, sparse_scheduler]
+        return optimizer
 
     def mse_loss(self, batch):
         """
@@ -311,10 +316,10 @@ class NBAGroupRidge(NBAEncoder):
         """
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument("--lr", type=float, default=0.05)
-        parser.add_argument("--team_data_path", type=str, default="data/team_map.csv")
-        parser.add_argument(
-            "--player_data_path", type=str, default="data/player_map.csv"
-        )
+        # parser.add_argument("--team_data_path", type=str, default="data/team_map.csv")
+        # parser.add_argument(
+        #     "--player_data_path", type=str, default="data/player_map.csv"
+        # )
         parser.add_argument("--weight_decay", type=float, nargs="+", default=[0.05] * 6)
         return parser
 
@@ -328,6 +333,18 @@ class NBAGroupRidge(NBAEncoder):
         n_team = team["teamids"].nunique()
         n_player = player["playerids"].nunique()
         return n_team, n_player
+
+
+def extract_player_embeddings(ckpt_path):
+    """
+    extract player embeddings
+    """
+    model = NBAGroupRidge.load_from_checkpoint(checkpoint_path=ckpt_path)
+    offp = model.off_player.weight.detach().numpy()
+    defp = model.def_player.weight.detach().numpy()
+    offpa = model.off_player_age.weight.detach().numpy()
+    defpa = model.def_player_age.weight.detach().numpy()
+    return np.concatenate([offp, defp, offpa, defpa], axis=1)
 
 
 # tmp = None
@@ -356,9 +373,10 @@ if __name__ == "__main__":
         args,
         logger=tb_logger,
         callbacks=[nba_early_stopping],
-        max_epochs=30,
+        max_epochs=20,
         # precision=16,
     )
     start = datetime.now()
     trainer.fit(model, datamodule=nba)
+    trainer.save_checkpoint("ckpt/nba_2018.ckpt")
     print(datetime.now() - start)
