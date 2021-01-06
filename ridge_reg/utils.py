@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 import pandas as pd
 import torch
+from scipy.sparse import csc_matrix
 from sklearn.model_selection import train_test_split
 
 root_dir = "~/repository/exercise/ridge_reg"
@@ -33,7 +34,11 @@ def train_val_test_split(
 
 
 def load_nba(
-    path="data/nba_2018/nba_2018.csv", split_mode=None, test=0.1, val=0.15, to_tensor=False
+    path="data/nba_2018/nba_2018.csv",
+    split_mode=None,
+    test=0.1,
+    val=0.15,
+    to_tensor=False,
 ):
     """
     load nba data
@@ -63,6 +68,18 @@ def load_nba(
                 transform_to_array(test),
             )
         return train, val, test
+
+
+def load_nba_sparse(data="train"):
+    """
+    load nba sparse data
+    """
+    x_path = f"data/nba_2018_sparse/X_{data}.csv"
+    y_path = f"data/nba_2018_sparse/y_{data}.csv"
+    dfx = pd.read_csv(x_path)
+    x = csc_matrix((dfx["x"], (dfx["i"] - 1, dfx["j"] - 1)))
+    dfy = pd.read_csv(y_path, dtype={"y": np.float64})
+    return x, dfy["y"].values
 
 
 def transform_to_array(df, to_tensor=True):

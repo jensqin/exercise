@@ -145,6 +145,20 @@ class NBADataModule(pl.LightningDataModule):
         return parser
 
 
+class SetEmbedding(nn.Module):
+    """
+    set embedding
+    """
+
+    def __init__(self, num_embeddings: int, embedding_dim: int):
+        super().__init__()
+        self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        maxp = torch.amax(x, dim=1, keepdim=True)
+
+
 class NBAEncoder(pl.LightningModule):
     """
     NBA Encoders
@@ -163,17 +177,17 @@ class NBAEncoder(pl.LightningModule):
         #     team_data_path, player_data_path
         # )
         n_team, n_player = 30, 531
-        n_team_emb, n_player_emb = 1, 1
+        self.n_team_emb, self.n_player_emb = 2, 2
         self.lr = lr
         self.wd = weight_decay
-        self.fc = nn.Linear(2, 1)
-        self.off_team = nn.Embedding(n_team, n_team_emb)
-        self.def_team = nn.Embedding(n_team, n_team_emb)
+        self.fc = nn.Linear(14, 1)
+        self.off_team = nn.Embedding(n_team, self.n_team_emb)
+        self.def_team = nn.Embedding(n_team, self.n_team_emb)
         # self.dense = nn.ModuleList([self.fc, self.off_team, self.def_team])
-        self.off_player = nn.EmbeddingBag(n_player, n_player_emb, mode="sum")
-        self.off_player_age = nn.EmbeddingBag(n_player, n_player_emb, mode="sum")
-        self.def_player = nn.EmbeddingBag(n_player, n_player_emb, mode="sum")
-        self.def_player_age = nn.EmbeddingBag(n_player, n_player_emb, mode="sum")
+        self.off_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
+        self.off_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
+        self.def_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
+        self.def_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
         # player_dim = n_player_emb * 4
         # self.bn_player = nn.BatchNorm1d(player_dim)
         # self.fin = nn.Linear(2 + n_team_emb * 2 + n_player_emb * 4, 3)
@@ -227,17 +241,20 @@ class NBAGroupRidge(NBAEncoder):
         representations
         """
         fc, offt, deft, offp, offpa, defp, defpa = x
-        fc = self.fc(fc)
-        offt = self.off_team(offt).view(-1, 1)
-        deft = self.def_team(deft).view(-1, 1)
+        # fc = self.fc(fc)
+        offt = self.off_team(offt).view(-1, self.n_team_emb)
+        deft = self.def_team(deft).view(-1, self.n_team_emb)
         offpa = self.off_player_age(offp, per_sample_weights=offpa)
         defpa = self.def_player_age(defp, per_sample_weights=defpa)
         offp = self.off_player(offp)
         defp = self.def_player(defp)
+        emb = torch.cat([fc, offt, deft, offp, offpa, defp, defpa], dim=1)
+        emb = F.leaky_relu(emb)
 
         if return_embedding:
             return torch.cat([offt, deft, offp, offpa, defp, defpa], dim=1)
-        return fc + offt + deft + offpa + defpa + offp + defp
+        # return fc + offt + deft + offpa + defpa + offp + defp
+        return self.fc(emb)
 
     # def training_step(self, batch, batch_idx, optimizer_idx):
     def training_step(self, batch, batch_idx):
@@ -245,7 +262,7 @@ class NBAGroupRidge(NBAEncoder):
         training step
         """
         loss = self.mse_loss(batch)
-        self.log("train_loss", loss, on_step=False, on_epoch=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
     def training_epoch_end(self, training_step_outputs):
@@ -373,7 +390,7 @@ if __name__ == "__main__":
         args,
         logger=tb_logger,
         callbacks=[nba_early_stopping],
-        max_epochs=20,
+        max_epochs=5,
         # precision=16,
     )
     start = datetime.now()
