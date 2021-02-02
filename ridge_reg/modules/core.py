@@ -1,22 +1,16 @@
 from argparse import ArgumentParser
-from datetime import datetime
-
-# import os
 
 import numpy as np
 import pandas as pd
+import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.optim import AdamW, Adamax, SGD
-from torch.optim.lr_scheduler import OneCycleLR
-from torch.utils.data.dataset import Dataset
+from torch.optim import SGD, Adamax, AdamW
 from torch.utils.data.dataloader import DataLoader
-import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from torch.utils.data.dataset import Dataset
 
-from utils import train_val_test_split, load_nba
+from utils import load_nba, train_val_test_split
 
 
 class NBADataset(Dataset):
@@ -153,10 +147,80 @@ class SetEmbedding(nn.Module):
     def __init__(self, num_embeddings: int, embedding_dim: int):
         super().__init__()
         self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+        self.fc1 = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.fc2 = nn.Linear(embedding_dim, embedding_dim, bias=False)
 
     def forward(self, x):
         x = self.embedding(x)
         maxp = torch.amax(x, dim=1, keepdim=True)
+        combo = self.fc1(x) + self.fc2(maxp)
+        return torch.sigmoid(combo)
+
+
+class SetEmbeddingBag(nn.Module):
+    """
+    set embedding
+    """
+
+    def __init__(self, num_embeddings: int, embedding_dim: int, mode: str = "mean"):
+        super().__init__()
+        self.mode = mode
+        self.embedding = nn.Embedding(num_embeddings, embedding_dim)
+        self.en_fc = nn.Linear(embedding_dim, embedding_dim)
+        self.de_fc = nn.Linear(embedding_dim, embedding_dim)
+        self.fc1 = nn.Linear(embedding_dim, embedding_dim, bias=False)
+        self.fc2 = nn.Linear(embedding_dim, embedding_dim, bias=False)
+
+    def encoder(self, x):
+        x = self.en_fc(x)
+        return F.celu(x)
+
+    def decoder(self, x):
+        x = self.de_fc(x)
+        return F.celu(x)
+
+    def forward(self, x):
+        x = self.embedding(x)
+        x = self.encoder(x)
+        maxp = torch.amax(x, dim=1, keepdim=True)
+        combo = self.fc1(x) + self.fc2(maxp)
+        if self.mode == "mean":
+            combo = torch.mean(combo, dim=1)
+        elif self.mode == "max":
+            combo = torch.amax(combo, dim=1)
+        elif self.mode == "sum":
+            combo = torch.sum(combo, dim=1)
+        else:
+            raise NotImplementedError(f"{self.mode} mode is not implemented.")
+        return self.decoder(combo)
+
+
+class ResBlock(nn.Module):
+    """
+    resnet block
+    """
+
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.bn1 = nn.BatchNorm1d(in_dim)
+        self.fc1 = nn.Linear(in_dim, in_dim)
+        self.bn2 = nn.BatchNorm1d(in_dim)
+        self.fc2 = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        # res = self.bn1(x)
+        # res = F.relu(res)
+        # res = self.fc1(res)
+        # res = self.bn2(res)
+        # res = F.relu(res)
+        # res = self.fc2(res)
+        res = self.fc1(x)
+        res = self.bn1(res)
+        res = F.relu(res)
+        res = self.fc2(res)
+        # res = self.bn2(res)
+        # res = F.relu(res)
+        return x + res
 
 
 class NBAEncoder(pl.LightningModule):
@@ -170,6 +234,10 @@ class NBAEncoder(pl.LightningModule):
         # player_data_path="data/player_map.csv",
         lr=0.1,
         weight_decay=[0.0],
+        n_team=30,
+        team_emb_dim=2,
+        n_player=531,
+        player_emb_dim=2,
         **kwargs,
     ):
         super().__init__()
@@ -177,23 +245,45 @@ class NBAEncoder(pl.LightningModule):
         #     team_data_path, player_data_path
         # )
         n_team, n_player = 30, 531
-        self.n_team_emb, self.n_player_emb = 2, 2
+        self.n_team_emb, self.n_player_emb = team_emb_dim, player_emb_dim
         self.lr = lr
         self.wd = weight_decay
-        self.fc = nn.Linear(14, 1)
+        self.in_dim = 2 + 4 * self.n_player_emb + 2 * self.n_team_emb
+        self.out_dim = 1
+        self.fc = nn.Linear(self.in_dim, self.out_dim)
         self.off_team = nn.Embedding(n_team, self.n_team_emb)
         self.def_team = nn.Embedding(n_team, self.n_team_emb)
         # self.dense = nn.ModuleList([self.fc, self.off_team, self.def_team])
-        self.off_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
-        self.off_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
-        self.def_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
-        self.def_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
-        # player_dim = n_player_emb * 4
-        # self.bn_player = nn.BatchNorm1d(player_dim)
-        # self.fin = nn.Linear(2 + n_team_emb * 2 + n_player_emb * 4, 3)
-        # self.sparse = nn.ModuleList(
-        #     [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
+        self.off_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="mean")
+        # self.off_player = nn.Sequential(
+        #     nn.Embedding(n_player, self.n_player_emb),
+        #     SetTransformer(self.n_player_emb, 1, self.n_player_emb, num_heads=4),
         # )
+        self.off_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
+        self.def_player = nn.EmbeddingBag(n_player, self.n_player_emb, mode="mean")
+        # self.def_player = nn.Sequential(
+        #     nn.Embedding(n_player, self.n_player_emb),
+        #     SetTransformer(self.n_player_emb, 1, self.n_player_emb, num_heads=4),
+        # )
+        self.def_player_age = nn.EmbeddingBag(n_player, self.n_player_emb, mode="sum")
+
+        # resnet
+        # offdef_dim = self.n_player_emb * 2
+        # tp_dim = self.n_team_emb + offdef_dim
+        # self.off = nn.Linear(self.n_player_emb * 2, self.n_player_emb * 2)
+        # self.deff = nn.Linear(self.n_player_emb * 2, self.n_player_emb * 2)
+        # self.offtp = nn.Linear(tp_dim, tp_dim)
+        # self.deftp = nn.Linear(tp_dim, tp_dim)
+        # # self.mix = nn.Bilinear(tp_dim, tp_dim, tp_dim * 2)
+        # self.resblock = ResBlock(self.in_dim, self.in_dim)
+        # self.threshold = nn.Threshold(0, 0)
+        # # self.fc1 = nn.Linear(in_dim, in_dim)
+        # # player_dim = n_player_emb * 4
+        # # self.bn_player = nn.BatchNorm1d(player_dim)
+        # # self.fin = nn.Linear(2 + n_team_emb * 2 + n_player_emb * 4, 3)
+        # # self.sparse = nn.ModuleList(
+        # #     [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
+        # # )
 
     @staticmethod
     def n_team_and_player(team_data_path, player_data_path):
@@ -206,57 +296,6 @@ class NBAEncoder(pl.LightningModule):
         n_player = player["playerids"].nunique()
         return n_team, n_player
 
-
-class NBAGroupRidge(NBAEncoder):
-    """
-    NBA Representation Learning
-    """
-
-    # def __init__(
-    #     self,
-    #     team_data_path="data/team_map.csv",
-    #     player_data_path="data/player_map.csv",
-    #     lr=0.1,
-    #     weight_decay=[0.0],
-    #     **kwargs,
-    # ):
-    #     super().__init__()
-    #     n_team, n_player = NBAEncoder.n_team_and_player(team_data_path, player_data_path)
-    #     self.lr = lr
-    #     self.wd = weight_decay
-    #     self.fc = nn.Linear(2, 1, bias=True)
-    #     self.off_team = nn.Embedding(n_team, 1)
-    #     self.def_team = nn.Embedding(n_player, 1)
-    #     # self.dense = nn.ModuleList([self.fc, self.off_team, self.def_team])
-    #     self.off_player = nn.EmbeddingBag(n_player, 1, mode="sum")
-    #     self.off_player_age = nn.EmbeddingBag(n_player, 1, mode="sum")
-    #     self.def_player = nn.EmbeddingBag(n_player, 1, mode="sum")
-    #     self.def_player_age = nn.EmbeddingBag(n_player, 1, mode="sum")
-    #     # self.sparse = nn.ModuleList(
-    #     #     [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
-    #     # )
-
-    def forward(self, x, return_embedding=True):
-        """
-        representations
-        """
-        fc, offt, deft, offp, offpa, defp, defpa = x
-        # fc = self.fc(fc)
-        offt = self.off_team(offt).view(-1, self.n_team_emb)
-        deft = self.def_team(deft).view(-1, self.n_team_emb)
-        offpa = self.off_player_age(offp, per_sample_weights=offpa)
-        defpa = self.def_player_age(defp, per_sample_weights=defpa)
-        offp = self.off_player(offp)
-        defp = self.def_player(defp)
-        emb = torch.cat([fc, offt, deft, offp, offpa, defp, defpa], dim=1)
-        emb = F.leaky_relu(emb)
-
-        if return_embedding:
-            return torch.cat([offt, deft, offp, offpa, defp, defpa], dim=1)
-        # return fc + offt + deft + offpa + defpa + offp + defp
-        return self.fc(emb)
-
-    # def training_step(self, batch, batch_idx, optimizer_idx):
     def training_step(self, batch, batch_idx):
         """
         training step
@@ -310,7 +349,7 @@ class NBAGroupRidge(NBAEncoder):
         #     {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
         #     {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
         # ]
-        optimizer = SGD(opt_param, lr=self.lr)
+        optimizer = AdamW(opt_param, lr=self.lr)
         # dense_opt = AdamW(dense_param, lr=self.lr)
         # sparse_opt = Adamax(sparse_param, lr=self.lr)
         # dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=1000)
@@ -337,7 +376,7 @@ class NBAGroupRidge(NBAEncoder):
         # parser.add_argument(
         #     "--player_data_path", type=str, default="data/player_map.csv"
         # )
-        parser.add_argument("--weight_decay", type=float, nargs="+", default=[0.05] * 6)
+        parser.add_argument("--weight_decay", type=float, nargs="+", default=[0.0] * 6)
         return parser
 
     @staticmethod
@@ -352,11 +391,11 @@ class NBAGroupRidge(NBAEncoder):
         return n_team, n_player
 
 
-def extract_player_embeddings(ckpt_path):
+def extract_player_embeddings(model_cls, ckpt_path):
     """
     extract player embeddings
     """
-    model = NBAGroupRidge.load_from_checkpoint(checkpoint_path=ckpt_path)
+    model = model_cls.load_from_checkpoint(checkpoint_path=ckpt_path)
     offp = model.off_player.weight.detach().numpy()
     defp = model.def_player.weight.detach().numpy()
     offpa = model.off_player_age.weight.detach().numpy()
@@ -364,36 +403,22 @@ def extract_player_embeddings(ckpt_path):
     return np.concatenate([offp, defp, offpa, defpa], axis=1)
 
 
-# tmp = None
-# tmp1 = DataLoader(NBADataset(tmp), batch_size=3)
-# tmp2, tmp3 = next(iter(tmp1))
-# tmp2[3]
-# tmpp = NBAEncoderModule()
+def save_output(model, file_name):
+    x, _ = load_nba(path="data/nba_2018/nba_2018_test.csv", to_tensor=True)
+    model.freeze()
+    yhat = model(x, return_embedding=False)
+    if file_name:
+        np.save(f"data/output/{file_name}.npy", yhat.numpy().squeeze())
 
 
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument("--logdir", type=str, default="logs")
-    parser = NBADataModule.add_data_specific_args(parser)
-    parser = NBAGroupRidge.add_model_specific_args(parser)
-    parser = pl.Trainer.add_argparse_args(parser)
-    args = parser.parse_args()
-    nba_early_stopping = EarlyStopping(
-        monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min"
-    )
-    dict_args = vars(args)
-    pl.seed_everything(0)
-    nba = NBADataModule(test_size=0.01, **dict_args)
-    model = NBAGroupRidge(**dict_args)
-    tb_logger = TensorBoardLogger(save_dir=args.logdir)
-    trainer = pl.Trainer.from_argparse_args(
-        args,
-        logger=tb_logger,
-        callbacks=[nba_early_stopping],
-        max_epochs=5,
-        # precision=16,
-    )
-    start = datetime.now()
-    trainer.fit(model, datamodule=nba)
-    trainer.save_checkpoint("ckpt/nba_2018.ckpt")
-    print(datetime.now() - start)
+class NBASetEncoder(NBAEncoder):
+    """
+    NBA Deep Set Encoder
+    """
+
+    def __init__(self, lr=0.01, weight_decay=0, n_team=30, n_player=531, **kwargs):
+        super().__init__(
+            lr=lr, weight_decay=weight_decay, n_team=n_team, n_player=n_player, **kwargs
+        )
+        self.off_player = SetEmbeddingBag(n_player, self.n_player_emb, mode="mean")
+        self.def_player = SetEmbeddingBag(n_player, self.n_player_emb, mode="mean")

@@ -43,9 +43,11 @@ def load_nba(
     """
     load nba data
     """
-    float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
+    float_cols = ["y", "y_exp", "HomeAway", "ScoreDiff"] + [
+        f"age{x}" for x in range(1, 11)
+    ]
     type_dict = {key: np.float32 for key in float_cols}
-    df = pd.read_csv(os.path.join(root_dir, path), dtype=type_dict)
+    df = pd.read_csv(os.path.join(root_dir, path), dtype=type_dict, index_col=False)
     stratify_cols = ["OffTeam", "DefTeam"]
     if split_mode is None:
         if to_tensor:

@@ -9,8 +9,10 @@ from ray.tune.schedulers import HyperBandForBOHB
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from nba_torch import NBADataModule, NBAGroupRidge
-
+from modules.core import NBADataModule
+from models.ridge import NBARidge
+from models.mlr import NBAMixedLogit
+from models.dcn import NBADCN
 from utils import root_dir
 
 
@@ -21,7 +23,7 @@ def train_nba(config, num_epochs=10):
         test_size=0.01,
         # batch_size=config["batch_size"],
     )
-    model = NBAGroupRidge(
+    model = NBAMixedLogit(
         lr=config["lr"], weight_decay=list(config["weight_decay"].values())
     )
     trainer = pl.Trainer(
@@ -46,6 +48,7 @@ def tune_nba_torch(num_samples=100, num_epochs=50):
     config = {
         "lr": tune.loguniform(1e-4, 1e-1),
         "weight_decay": {str(x): tune.uniform(0, 0.2) for x in range(6)},
+        # "weight_decay": {str(x): 0.05 for x in range(6)},
     }
     algo = TuneBOHB(max_concurrent=4)
     scheduler = HyperBandForBOHB(
@@ -93,7 +96,7 @@ if __name__ == "__main__":
     #     },
     # }
     parser = ArgumentParser()
-    parser.add_argument("--n_samples", type=int, default=50)
+    parser.add_argument("--n_samples", type=int, default=30)
     parser.add_argument("--n_epochs", type=int, default=15)
     args = parser.parse_args()
     tune_nba_torch(args.n_samples, args.n_epochs)
@@ -114,11 +117,11 @@ if __name__ == "__main__":
     # {
     #     "lr": 0.0020747915677990433,
     #     "weight_decay": {
-            # "0": 0.02090030251079458,
-            # "1": 0.08499998457075844,
-            # "2": 0.12153418314918588,
-            # "3": 0.1272122955065476,
-            # "4": 0.03716296686196379,
-            # "5": 0.11646519017723754,
+    # "0": 0.02090030251079458,
+    # "1": 0.08499998457075844,
+    # "2": 0.12153418314918588,
+    # "3": 0.1272122955065476,
+    # "4": 0.03716296686196379,
+    # "5": 0.11646519017723754,
     #     },
     # }
