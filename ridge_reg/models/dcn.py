@@ -16,7 +16,7 @@ from torch.utils.data.dataset import Dataset
 
 from modules.core import NBADataModule, NBAEncoder, ResBlock
 from modules.set_transformer import SetTransformer
-from modules.cross_net import CrossNet
+from modules.cross_net import CrossNet, CrossNetMix
 from utils import load_nba, train_val_test_split
 
 
@@ -59,7 +59,7 @@ class NBADCN(NBAEncoder):
         self.wd = weight_decay
         self.in_dim = 2 + 4 * self.n_player_emb + 2 * self.n_team_emb
         self.out_dim = 1
-        self.fc = nn.Linear(self.in_dim * 2, self.out_dim)
+        self.fc = nn.Linear(self.in_dim, self.out_dim)
         # self.fc = nn.Linear(self.in_dim, self.out_dim)
         self.off_team = nn.Embedding(n_team, self.n_team_emb)
         self.def_team = nn.Embedding(n_team, self.n_team_emb)
@@ -81,9 +81,9 @@ class NBADCN(NBAEncoder):
         self.offtp = nn.Linear(tp_dim, tp_dim)
         self.deftp = nn.Linear(tp_dim, tp_dim)
         # self.mix = nn.Bilinear(tp_dim, tp_dim, tp_dim * 2)
-        self.resblock = ResBlock(self.in_dim, self.in_dim)
-        self.cross_net = CrossNet(self.in_dim)
-        self.threshold = nn.Threshold(0, 0)
+        # self.resblock = ResBlock(self.in_dim, self.in_dim)
+        self.cross_net = CrossNetMix(self.in_dim)
+        # self.threshold = nn.Threshold(0, 0)
         # self.fc1 = nn.Linear(in_dim, in_dim)
         # player_dim = n_player_emb * 4
         # self.bn_player = nn.BatchNorm1d(player_dim)
@@ -126,13 +126,14 @@ class NBADCN(NBAEncoder):
         # emb = torch.cat([fc, offt, deft, off, deff], dim=1)
         emb = torch.cat([fc, offtp, deftp], dim=1)
         cross_emb = self.cross_net(emb)
-        emb = self.resblock(emb)
-        emb = F.celu(emb)
+        cross_emb = F.celu(cross_emb)
+        # emb = self.resblock(emb)
+        # emb = F.celu(emb)
 
         if return_embedding:
             return torch.cat([offt, deft, offp, offpa, defp, defpa], dim=1)
         # return fc + offt + deft + offpa + defpa + offp + defp
-        return self.threshold(self.fc(torch.cat([emb, cross_emb], dim=1)))
+        return self.fc(cross_emb)
 
 
 if __name__ == "__main__":

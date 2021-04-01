@@ -64,7 +64,7 @@ class CrossNetMix(nn.Module):
     """The Cross Network part of DCN-Mix model"""
 
     def __init__(
-        self, in_features, low_rank=32, num_experts=4, layer_num=2, device="cpu"
+        self, in_features, low_rank=4, num_experts=4, layer_num=2, device="cpu"
     ):
         super(CrossNetMix, self).__init__()
         self.layer_num = layer_num

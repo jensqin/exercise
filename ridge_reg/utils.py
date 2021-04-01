@@ -1,5 +1,7 @@
 import os
 from typing import Tuple
+from dotenv import find_dotenv, load_dotenv
+from bla_python_db_utilities import auth
 
 import numpy as np
 import pandas as pd
@@ -117,3 +119,29 @@ def summary_samples(samples):
         }
         for k, v in samples.items()
     }
+
+
+load_dotenv(find_dotenv(), override=True)
+
+ENGINE_CONFIG = auth.load_url_dict(
+    prefix=[
+        "BASKETBALL_NBA_DEV.",
+        "BASKETBALL_NBA_MODEL_DEV.",
+        "BASKETBALL_NBA_TEST.",
+        "BASKETBALL_NBA_MODEL_TEST.",
+    ]
+)
+
+SQL_DIR = "sql"
+SQL_PATH = {
+    "sportradar": "sportradar.sql"
+}
+SQL_PATH = {key: SQL_DIR + "/" + value for key, value in SQL_PATH.items()}
+
+S3_BUCKET = "bla-basketball-models"
+HPARAMS_URL = "s3://" + S3_BUCKET + "/NBA/zqin-models/hyperparameters"
+HPARAMS_PATH = "nba/hparams.json"
+MODEL_URL = "NBA/zqin-models/models"
+DATALOADER_URL = "NBA/zqin-models/dataloaders"
+
+LOG_DIR = "nba/.tensorboard_logs"

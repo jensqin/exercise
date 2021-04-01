@@ -22,25 +22,16 @@ class NBARidge(NBAEncoder):
     """
 
     def __init__(
-        self,
-        lr=0.01,
-        weight_decay=0,
-        n_team=30,
-        team_emb_dim=1,
-        n_player=531,
-        player_emb_dim=1,
-        **kwargs,
+        self, lr=0.01, weight_decay=0, team_emb_dim=1, player_emb_dim=1, **kwargs,
     ):
         super().__init__(
             lr=lr,
             weight_decay=weight_decay,
-            n_team=n_team,
             team_emb_dim=team_emb_dim,
-            n_player=n_player,
             player_emb_dim=player_emb_dim,
             **kwargs,
         )
-        self.fc = nn.Linear(2, self.out_dim)
+        self.fc0 = nn.Linear(2, self.out_dim)
 
     # def __init__(
     #     self,
@@ -71,11 +62,11 @@ class NBARidge(NBAEncoder):
         representations
         """
         fc, offt, deft, offp, offpa, defp, defpa = x
-        fc = self.fc(fc)
-        offt = self.off_team(offt).view(-1, 1)
-        deft = self.def_team(deft).view(-1, 1)
-        offpa = self.off_player_age(offp, per_sample_weights=offpa)
-        defpa = self.def_player_age(defp, per_sample_weights=defpa)
+        fc = self.fc0(fc)
+        offt = self.off_team(offt).view(-1, self.n_team_emb)
+        deft = self.def_team(deft).view(-1, self.n_team_emb)
+        # offpa = self.off_player_age(offp, per_sample_weights=offpa)
+        # defpa = self.def_player_age(defp, per_sample_weights=defpa)
         offp = self.off_player(offp)
         defp = self.def_player(defp)
 
@@ -99,7 +90,8 @@ class NBARidge(NBAEncoder):
 
         # offdef = self.mix(off, deff)
         # offdef = F.selu(offdef)
-        emb = torch.cat([fc, offt, deft, offp, offpa, defp, defpa], dim=1)
+        emb = torch.cat([fc, offt, deft, offp, defp], dim=1)
+        # emb = torch.cat([fc, offt, deft, offp, offpa, defp, defpa], dim=1)
         # emb = torch.cat([fc, offt, deft, off, deff], dim=1)
 
         if return_embedding:
@@ -122,7 +114,7 @@ class NBARidge(NBAEncoder):
         training epoch end
         """
         logger = self.logger.experiment
-        logger.add_histogram("fc_weight", self.fc.weight, self.current_epoch)
+        logger.add_histogram("fc_weight", self.fc0.weight, self.current_epoch)
 
     def validation_step(self, batch, batch_idx):
         """
@@ -143,7 +135,7 @@ class NBARidge(NBAEncoder):
         configure optimizer
         """
         opt_param = [
-            {"params": self.fc.parameters(), "weight_decay": 0},
+            {"params": self.fc0.parameters(), "weight_decay": 0},
             {"params": self.off_team.parameters(), "weight_decay": self.wd[0]},
             {"params": self.def_team.parameters(), "weight_decay": self.wd[1]},
             {"params": self.off_player.parameters(), "weight_decay": self.wd[2]},
@@ -170,13 +162,13 @@ class NBARidge(NBAEncoder):
         # return [dense_opt, sparse_opt], [dense_scheduler, sparse_scheduler]
         return optimizer
 
-    def mse_loss(self, batch):
-        """
-        calculate mse loss
-        """
-        x, y = batch
-        yhat = self(x, return_embedding=False)
-        return F.mse_loss(torch.flatten(yhat), torch.flatten(y))
+    # def mse_loss(self, batch):
+    #     """
+    #     calculate mse loss
+    #     """
+    #     x, y = batch
+    #     yhat = self(x, return_embedding=False)
+    #     return F.mse_loss(torch.flatten(yhat), torch.flatten(y))
 
     @staticmethod
     def add_model_specific_args(parent_parser):

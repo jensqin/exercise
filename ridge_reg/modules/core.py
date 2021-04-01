@@ -53,6 +53,35 @@ class NBADataset(Dataset):
         return sample_x, sample_y
 
 
+class NBABetDataset(NBADataset):
+    """
+    NBA 2018 Data
+    """
+
+    def __init__(self, df):
+        super().__init__(df)
+        yhat_cols = ["y_exp"]
+        self.yhat = self.pd_to_tensor(self.df[yhat_cols])
+
+    def __len__(self):
+        return len(self.idx)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        sample_x = [t[idx, :] for t in self.x]
+        sample_y = self.y[idx, :]
+        sample_yhat = self.yhat[idx, :]
+        return sample_x, sample_y, sample_yhat
+
+
+class BetLoss(nn.Module):
+    """bet loss"""
+
+    def __init__(self):
+        super().__init__()
+
+
 class NBADataModule(pl.LightningDataModule):
     """
     NBA NW Division data
@@ -65,6 +94,7 @@ class NBADataModule(pl.LightningDataModule):
         batch_size=32,
         val_size=0.15,
         test_size=0.1,
+        betloss=True,
         **kwargs,
     ):
         super().__init__()
@@ -89,9 +119,15 @@ class NBADataModule(pl.LightningDataModule):
         train = load_nba(path="data/nba_2018/nba_2018_train.csv")
         val = load_nba(path="data/nba_2018/nba_2018_test.csv")
         test = val
-        self.train = NBADataset(train)
-        self.val = NBADataset(val)
-        self.test = NBADataset(test)
+        self.betloss = betloss
+        if betloss:
+            self.train = NBABetDataset(train)
+            self.val = NBABetDataset(val)
+            self.test = NBABetDataset(test)
+        else:
+            self.train = NBADataset(train)
+            self.val = NBADataset(val)
+            self.test = NBADataset(test)
 
     def setup(self, stage=None):
         pass
@@ -235,9 +271,10 @@ class NBAEncoder(pl.LightningModule):
         lr=0.1,
         weight_decay=[0.0],
         n_team=30,
-        team_emb_dim=2,
+        team_emb_dim=1,
         n_player=531,
-        player_emb_dim=2,
+        player_emb_dim=1,
+        betloss=True,
         **kwargs,
     ):
         super().__init__()
@@ -245,6 +282,7 @@ class NBAEncoder(pl.LightningModule):
         #     team_data_path, player_data_path
         # )
         n_team, n_player = 30, 531
+        self.betloss = betloss
         self.n_team_emb, self.n_player_emb = team_emb_dim, player_emb_dim
         self.lr = lr
         self.wd = weight_decay
@@ -284,6 +322,9 @@ class NBAEncoder(pl.LightningModule):
         # # self.sparse = nn.ModuleList(
         # #     [self.off_player, self.off_player_age, self.def_player, self.def_player_age]
         # # )
+
+    def forward(self, x):
+        raise NotImplementedError
 
     @staticmethod
     def n_team_and_player(team_data_path, player_data_path):
@@ -361,9 +402,17 @@ class NBAEncoder(pl.LightningModule):
         """
         calculate mse loss
         """
-        x, y = batch
-        yhat = self(x, return_embedding=False)
-        return F.mse_loss(torch.flatten(yhat), torch.flatten(y))
+        if self.betloss:
+            x, y, y_exp = batch
+            yhat = torch.flatten(self(x, return_embedding=False))
+            y, y_exp = torch.flatten(y), torch.flatten(y_exp)
+            ysign = torch.sign(y_exp - y)
+            bet_result = torch.sigmoid(100 * (yhat - y_exp)) * ysign
+            return torch.mean(bet_result)
+        else:
+            x, y = batch
+            yhat = self(x, return_embedding=False)
+            return F.mse_loss(torch.flatten(yhat), torch.flatten(y))
 
     @staticmethod
     def add_model_specific_args(parent_parser):
@@ -408,7 +457,11 @@ def save_output(model, file_name):
     model.freeze()
     yhat = model(x, return_embedding=False)
     if file_name:
-        np.save(f"data/output/{file_name}.npy", yhat.numpy().squeeze())
+        path = f"data/output/{file_name}.npy"
+        np.save(path, yhat.numpy().squeeze())
+        print(f"Saved file to {path}.")
+    else:
+        print("File name is None, no outputs are saved.")
 
 
 class NBASetEncoder(NBAEncoder):
@@ -416,9 +469,138 @@ class NBASetEncoder(NBAEncoder):
     NBA Deep Set Encoder
     """
 
-    def __init__(self, lr=0.01, weight_decay=0, n_team=30, n_player=531, **kwargs):
+    def __init__(
+        self,
+        lr=0.01,
+        weight_decay=0,
+        n_team=30,
+        team_emb_dim=1,
+        n_player=531,
+        player_emb_dim=1,
+        **kwargs,
+    ):
         super().__init__(
-            lr=lr, weight_decay=weight_decay, n_team=n_team, n_player=n_player, **kwargs
+            lr=lr,
+            weight_decay=weight_decay,
+            n_team=n_team,
+            team_emb_dim=team_emb_dim,
+            n_player=n_player,
+            player_emb_dim=player_emb_dim,
+            **kwargs,
         )
+        self.n_player = n_player
+        self.n_team = n_team
         self.off_player = SetEmbeddingBag(n_player, self.n_player_emb, mode="mean")
         self.def_player = SetEmbeddingBag(n_player, self.n_player_emb, mode="mean")
+
+
+class NBAEmbEncoder(NBAEncoder):
+    """
+    NBA Player Embedding Encoder
+    """
+
+    def __init__(
+        self,
+        lr=0.01,
+        weight_decay=0,
+        n_team=30,
+        team_emb_dim=1,
+        n_player=531,
+        player_emb_dim=1,
+        **kwargs,
+    ):
+        super().__init__(
+            lr=lr,
+            weight_decay=weight_decay,
+            n_team=n_team,
+            team_emb_dim=team_emb_dim,
+            n_player=n_player,
+            player_emb_dim=player_emb_dim,
+            **kwargs,
+        )
+        self.n_player = n_player
+        self.n_team = n_team
+        self.off_player = nn.Embedding(n_player, self.n_player_emb)
+        self.def_player = nn.Embedding(n_player, self.n_player_emb)
+
+
+class FM(nn.Module):
+    """Factorization Machine models pairwise (order-2) feature interactions
+     without linear term and bias.
+      Input shape
+        - 3D tensor with shape: ``(batch_size,field_size,embedding_size)``.
+      Output shape
+        - 2D tensor with shape: ``(batch_size, 1)``.
+    """
+
+    def __init__(self):
+        super(FM, self).__init__()
+
+    def forward(self, inputs):
+        fm_input = inputs
+
+        square_of_sum = torch.pow(torch.sum(fm_input, dim=1, keepdim=True), 2)
+        sum_of_square = torch.sum(fm_input * fm_input, dim=1, keepdim=True)
+        cross_term = square_of_sum - sum_of_square
+        cross_term = 0.5 * torch.sum(cross_term, dim=2, keepdim=False)
+
+        return cross_term
+
+
+class BiInteraction(nn.Module):
+    """Bi-Interaction Layer
+     pairwise element-wise product of features into one single vector.
+
+      Input shape
+        - A 3D tensor with shape:``(batch_size,field_size,embedding_size)``.
+
+      Output shape
+        - 3D tensor with shape: ``(batch_size,1,embedding_size)``.
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, inputs):
+        concated_embeds_value = inputs
+        square_of_sum = torch.pow(
+            torch.sum(concated_embeds_value, dim=1, keepdim=True), 2
+        )
+        sum_of_square = torch.sum(
+            concated_embeds_value * concated_embeds_value, dim=1, keepdim=True
+        )
+        return 0.5 * (square_of_sum - sum_of_square)
+
+
+class NBAInteractionEncoder(NBAEncoder):
+    """
+    NBA Player Embedding Encoder
+    """
+
+    def __init__(
+        self,
+        lr=0.01,
+        weight_decay=0,
+        n_team=30,
+        team_emb_dim=1,
+        n_player=531,
+        player_emb_dim=1,
+        **kwargs,
+    ):
+        super().__init__(
+            lr=lr,
+            weight_decay=weight_decay,
+            n_team=n_team,
+            team_emb_dim=team_emb_dim,
+            n_player=n_player,
+            player_emb_dim=player_emb_dim,
+            **kwargs,
+        )
+        self.n_player = n_player
+        self.n_team = n_team
+        self.off_player = nn.Sequential(
+            nn.Embedding(n_player, self.n_player_emb), BiInteraction()
+        )
+        self.def_player = nn.Sequential(
+            nn.Embedding(n_player, self.n_player_emb), BiInteraction()
+        )

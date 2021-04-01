@@ -11,8 +11,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from modules.core import NBADataModule
 from models.ridge import NBARidge
-from models.mlr import NBAMixedLogit
+from models.mlr import NBAMixedLogit, NBARidgeMLR, NBAMLRShootEmb
 from models.dcn import NBADCN
+from models.former import NBATransformer, NBAShootTF
 from utils import root_dir
 
 
@@ -20,11 +21,15 @@ def train_nba(config, num_epochs=10):
     nba = NBADataModule(
         data_path=os.path.join(root_dir, "data/nba_nw.csv"),
         num_workders=4,
+        batch_size=128,
         test_size=0.01,
+        betloss=True
         # batch_size=config["batch_size"],
     )
-    model = NBAMixedLogit(
-        lr=config["lr"], weight_decay=list(config["weight_decay"].values())
+    model = NBARidgeMLR(
+        lr=config["lr"],
+        weight_decay=list(config["weight_decay"].values()),
+        betloss=True,
     )
     trainer = pl.Trainer(
         max_epochs=num_epochs,

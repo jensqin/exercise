@@ -12,10 +12,11 @@ from torch import nn
 from torch.nn import functional as F
 
 from utils import load_nba, train_val_test_split
-from modules.core import NBADataModule, save_output
+from modules.core import NBADataModule, NBAEncoder, save_output
 from models.ridge import NBARidge
-from models.mlr import NBAMixedLogit
+from models.mlr import NBAMixedLogit, NBARidgeMLR, NBAMLRShootEmb
 from models.dcn import NBADCN
+from models.former import NBATransformer, NBAShootTF
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--out_file", type=str, default="")
     parser = NBADataModule.add_data_specific_args(parser)
-    parser = NBAMixedLogit.add_model_specific_args(parser)
+    parser = NBAEncoder.add_model_specific_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
     nba_early_stopping = EarlyStopping(
@@ -31,8 +32,8 @@ if __name__ == "__main__":
     )
     dict_args = vars(args)
     pl.seed_everything(0)
-    nba = NBADataModule(**dict_args)
-    model = NBAMixedLogit(**dict_args)
+    nba = NBADataModule(betloss=True, **dict_args)
+    model = NBARidgeMLR(betloss=True, **dict_args)
     tb_logger = TensorBoardLogger(save_dir=args.logdir)
     trainer = pl.Trainer.from_argparse_args(
         args,
