@@ -1,9 +1,12 @@
 import os
 
 import numpy as np
+from numpy.lib.npyio import load
 import pandas as pd
 import seaborn as sns
 from sklearn.metrics import mean_squared_error
+
+from utils import load_nba
 
 os.chdir("..")
 
@@ -29,9 +32,13 @@ sns.jointplot("mlr", "ridge", data=df, kind="kde")
 
 # learning rate: 0.001, alpha1, alpha2, alpha3, etc.
 
-# tmpp = ((df["ridgemlr_test"] > tmp["y_exp"]) & (tmp["y_exp"] > tmp["y"])) | (
-#     (df["ridgemlr_test"] < tmp["y_exp"]) & (tmp["y_exp"] < tmp["y"])
-# )
+test = load_nba("data/nba_2018/nba_2018_test.csv")
+
+tmp = ((df["ridgemlr_mtl"] > test["y_exp"]) & (test["y_exp"] > test["y"])) | (
+    (df["ridgemlr_mtl"] < test["y_exp"]) & (test["y_exp"] < test["y"])
+)
+1 - tmp.mean()
+mean_squared_error(df["true"], df["ridgemlr_mtl"])
 
 
 def mse_weighted_average(p):

@@ -45,7 +45,11 @@ class NBAMixedLogit(NBASetEncoder):
         init method
         """
         super().__init__(
-            lr, weight_decay, team_emb_dim=team_emb_dim, player_emb_dim=player_emb_dim
+            lr,
+            weight_decay,
+            team_emb_dim=team_emb_dim,
+            player_emb_dim=player_emb_dim,
+            **kwargs,
         )
         num_group = 9
 

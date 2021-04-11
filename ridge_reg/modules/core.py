@@ -1,10 +1,13 @@
 from argparse import ArgumentParser
+import math
 
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
 import torch
 from torch import nn
+from torch.nn import init
+from torch.nn.parameter import Parameter
 from torch.nn import functional as F
 from torch.optim import SGD, Adamax, AdamW
 from torch.utils.data.dataloader import DataLoader
@@ -78,8 +81,51 @@ class NBABetDataset(NBADataset):
 class BetLoss(nn.Module):
     """bet loss"""
 
-    def __init__(self):
+    def __init__(self, scale=100, activation="tanh"):
         super().__init__()
+        self.scale = scale
+        self.activation = activation
+
+    def forward(self, input, target, estimates):
+        yhat = torch.flatten(input)
+        target, estimates = torch.flatten(target), torch.flatten(estimates)
+        logit = torch.sign(estimates - target) * self.scale * (yhat - estimates)
+        if self.activation == "tanh":
+            bet_result = torch.tanh(logit)
+        elif self.activation == "sigmoid":
+            bet_result = torch.sigmoid(logit)
+        else:
+            raise ValueError(f"{self.activation} is not supported!")
+        return torch.mean(bet_result)
+
+
+class MTLLoss(nn.Module):
+    """mtl loss for mse and bet"""
+
+    def __init__(self, scale=100, activation="sigmoid"):
+        super().__init__()
+        self.scale = scale
+        self.activation = activation
+        self.task_weights = Parameter(torch.Tensor(2))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        init.normal_(self.task_weights, mean=math.sqrt(5))
+
+    def forward(self, input, target, estimates):
+        yhat = torch.flatten(input)
+        target, estimates = torch.flatten(target), torch.flatten(estimates)
+        logit = torch.sign(estimates - target) * self.scale * (yhat - estimates)
+        if self.activation == "tanh":
+            logit = torch.tanh(logit)
+        elif self.activation == "sigmoid":
+            logit = torch.sigmoid(logit)
+        else:
+            raise ValueError(f"{self.activation} is not supported!")
+        logit = torch.mean(logit)
+        mse = F.mse_loss(yhat, target, reduction="mean")
+        loss = torch.stack((mse, 2 * logit))
+        return torch.sum(self.task_weights + loss / torch.exp(self.task_weights))
 
 
 class NBADataModule(pl.LightningDataModule):
@@ -94,7 +140,7 @@ class NBADataModule(pl.LightningDataModule):
         batch_size=32,
         val_size=0.15,
         test_size=0.1,
-        betloss=True,
+        loss="mse",
         **kwargs,
     ):
         super().__init__()
@@ -119,8 +165,8 @@ class NBADataModule(pl.LightningDataModule):
         train = load_nba(path="data/nba_2018/nba_2018_train.csv")
         val = load_nba(path="data/nba_2018/nba_2018_test.csv")
         test = val
-        self.betloss = betloss
-        if betloss:
+        self.loss = loss
+        if loss in ["mtl", "bet"]:
             self.train = NBABetDataset(train)
             self.val = NBABetDataset(val)
             self.test = NBABetDataset(test)
@@ -274,7 +320,7 @@ class NBAEncoder(pl.LightningModule):
         team_emb_dim=1,
         n_player=531,
         player_emb_dim=1,
-        betloss=True,
+        loss="mse",
         **kwargs,
     ):
         super().__init__()
@@ -282,7 +328,9 @@ class NBAEncoder(pl.LightningModule):
         #     team_data_path, player_data_path
         # )
         n_team, n_player = 30, 531
-        self.betloss = betloss
+        self.loss = loss
+        if loss == "mtl":
+            self.loss_fn = MTLLoss(scale=100, activation="sigmoid")
         self.n_team_emb, self.n_player_emb = team_emb_dim, player_emb_dim
         self.lr = lr
         self.wd = weight_decay
@@ -402,17 +450,24 @@ class NBAEncoder(pl.LightningModule):
         """
         calculate mse loss
         """
-        if self.betloss:
+        if self.loss == "bet":
             x, y, y_exp = batch
             yhat = torch.flatten(self(x, return_embedding=False))
             y, y_exp = torch.flatten(y), torch.flatten(y_exp)
             ysign = torch.sign(y_exp - y)
             bet_result = torch.sigmoid(100 * (yhat - y_exp)) * ysign
             return torch.mean(bet_result)
-        else:
+        elif self.loss == "mse":
             x, y = batch
             yhat = self(x, return_embedding=False)
             return F.mse_loss(torch.flatten(yhat), torch.flatten(y))
+        elif self.loss == "mtl":
+            x, y, y_exp = batch
+            yhat = torch.flatten(self(x, return_embedding=False))
+            y, y_exp = torch.flatten(y), torch.flatten(y_exp)
+            return self.loss_fn(yhat, y, y_exp)
+        else:
+            raise ValueError(f"{self.loss} is not supported! You can use 'mse'.")
 
     @staticmethod
     def add_model_specific_args(parent_parser):
