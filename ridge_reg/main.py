@@ -32,8 +32,8 @@ if __name__ == "__main__":
     )
     dict_args = vars(args)
     pl.seed_everything(0)
-    nba = NBADataModule(loss="mtl", **dict_args)
-    model = NBARidgeMLR(loss="mtl", **dict_args)
+    nba = NBADataModule(loss="mse", **dict_args)
+    model = NBARidge(loss="mse", **dict_args)
     tb_logger = TensorBoardLogger(save_dir=args.logdir)
     trainer = pl.Trainer.from_argparse_args(
         args,

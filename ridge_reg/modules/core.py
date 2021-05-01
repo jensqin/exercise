@@ -162,8 +162,8 @@ class NBADataModule(pl.LightningDataModule):
         #     stratify_cols=stratify_cols,
         #     random_state=None,
         # )
-        train = load_nba(path="data/nba_2018/nba_2018_train.csv")
-        val = load_nba(path="data/nba_2018/nba_2018_test.csv")
+        train = load_nba(path="data/nba/nba_train.csv")
+        val = load_nba(path="data/nba/nba_test.csv")
         test = val
         self.loss = loss
         if loss in ["mtl", "bet"]:
@@ -318,7 +318,7 @@ class NBAEncoder(pl.LightningModule):
         weight_decay=[0.0],
         n_team=30,
         team_emb_dim=1,
-        n_player=531,
+        n_player=2200,
         player_emb_dim=1,
         loss="mse",
         **kwargs,
@@ -327,7 +327,7 @@ class NBAEncoder(pl.LightningModule):
         # n_team, n_player = NBAEncoder.n_team_and_player(
         #     team_data_path, player_data_path
         # )
-        n_team, n_player = 30, 531
+        # n_team, n_player = 30, 531
         self.loss = loss
         if loss == "mtl":
             self.loss_fn = MTLLoss(scale=100, activation="sigmoid")
@@ -530,7 +530,7 @@ class NBASetEncoder(NBAEncoder):
         weight_decay=0,
         n_team=30,
         team_emb_dim=1,
-        n_player=531,
+        n_player=2200,
         player_emb_dim=1,
         **kwargs,
     ):
@@ -560,7 +560,7 @@ class NBAEmbEncoder(NBAEncoder):
         weight_decay=0,
         n_team=30,
         team_emb_dim=1,
-        n_player=531,
+        n_player=2200,
         player_emb_dim=1,
         **kwargs,
     ):
@@ -638,7 +638,7 @@ class NBAInteractionEncoder(NBAEncoder):
         weight_decay=0,
         n_team=30,
         team_emb_dim=1,
-        n_player=531,
+        n_player=2200,
         player_emb_dim=1,
         **kwargs,
     ):
