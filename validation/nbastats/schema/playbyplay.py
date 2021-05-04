@@ -1,3 +1,4 @@
+import pandera as pa
 from pandera import (
     DataFrameSchema,
     Column,
@@ -710,6 +711,114 @@ collapsed_schema = DataFrameSchema(
     #     coerce=False,
     #     name=None,
     # ),
+    coerce=True,
+    strict=False,
+    name=None,
+)
+
+agg_schema = DataFrameSchema(
+    columns={
+        "GameId": Column(
+            pandas_dtype=PandasDtype.Int64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=21900001.0),
+            #     Check.less_than_or_equal_to(max_value=21900011.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "HomeScore_max": Column(
+            pandas_dtype=PandasDtype.Int64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=94.0),
+            #     Check.less_than_or_equal_to(max_value=130.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "HomeScore_last": Column(
+            pandas_dtype=PandasDtype.Int64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=94.0),
+            #     Check.less_than_or_equal_to(max_value=130.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "AwayScore_max": Column(
+            pandas_dtype=PandasDtype.Int64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=85.0),
+            #     Check.less_than_or_equal_to(max_value=127.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "AwayScore_last": Column(
+            pandas_dtype=PandasDtype.Int64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=85.0),
+            #     Check.less_than_or_equal_to(max_value=127.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "HomeFinalScore": Column(
+            pandas_dtype=PandasDtype.Float64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=94.0),
+            #     Check.less_than_or_equal_to(max_value=130.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+        "AwayFinalScore": Column(
+            pandas_dtype=PandasDtype.Float64,
+            # checks=[
+            #     Check.greater_than_or_equal_to(min_value=85.0),
+            #     Check.less_than_or_equal_to(max_value=127.0),
+            # ],
+            nullable=False,
+            allow_duplicates=True,
+            coerce=False,
+            required=True,
+            regex=False,
+        ),
+    },
+    # index=Index(
+    #     pandas_dtype=PandasDtype.Int64,
+    #     checks=[
+    #         Check.greater_than_or_equal_to(min_value=0.0),
+    #         Check.less_than_or_equal_to(max_value=10.0),
+    #     ],
+    #     nullable=False,
+    #     coerce=False,
+    #     name=None,
+    # ),
+    checks=[
+        pa.Check(lambda df: (df["HomeFinalScore"] == df["HomeScore_last"]).all()),
+        pa.Check(lambda df: (df["HomeFinalScore"] == df["HomeScore_max"]).all()),
+        pa.Check(lambda df: (df["AwayFinalScore"] == df["AwayScore_last"]).all()),
+        pa.Check(lambda df: (df["AwayFinalScore"] == df["AwayScore_max"]).all()),
+    ],
     coerce=True,
     strict=False,
     name=None,

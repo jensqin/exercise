@@ -6,7 +6,7 @@ import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
 
-from nbastats.schema.playbyplay import play_schema
+from nbastats.schema.playbyplay import play_schema, agg_schema
 from settings import ENGINE_CONFIG, SQL_PATH
 
 # engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
@@ -121,16 +121,48 @@ def column_names(key):
             "AwayPlayer4Id",
             "AwayPlayer5Id",
         ],
+        "off_id": [
+            "OffPlayer1Id",
+            "OffPlayer2Id",
+            "OffPlayer3Id",
+            "OffPlayer4Id",
+            "OffPlayer5Id",
+        ],
+        "def_id": [
+            "DefPlayer1Id",
+            "DefPlayer2Id",
+            "DefPlayer3Id",
+            "DefPlayer4Id",
+            "DefPlayer5Id",
+        ],
+        "off_id_abbr": ["P1", "P2", "P3", "P4", "P5"],
+        "def_id_abbr": ["P6", "P7", "P8", "P9", "P10"],
+        "off_age": ["Age1", "Age2", "Age3", "Age4", "Age5"],
+        "def_age": ["Age6", "Age7", "Age8", "Age7", "Age10"],
+        "age": [
+            "Age1",
+            "Age2",
+            "Age3",
+            "Age4",
+            "Age5",
+            "Age6",
+            "Age7",
+            "Age8",
+            "Age7",
+            "Age10",
+        ],
     }
     return name_dict[key]
 
 
-@pa.check_io(df=play_schema)
-def convert_homeaway_to_offdef(df):
-    """convert columns"""
+@pa.check_io(output=play_schema)
+def preprocess_play(df):
+    """preprocess play"""
 
-    df = df.sort_values(["GameId", "PlayNum"]).reset_index(drop=True)
+    # important
+    df = df.sort_values(["GameId", "PlayNum"], ascending=True).reset_index(drop=True)
 
+    # home/away to off/def
     df["OffensiveTeamId"] = np.select(
         [df["HomeOff"].isna(), df["HomeOff"] == 1, df["HomeOff"] == 0],
         [None, df["HomeTeamId"], df["AwayTeamId"]],
@@ -140,14 +172,17 @@ def convert_homeaway_to_offdef(df):
         [None, df["AwayTeamId"], df["HomeTeamId"]],
     )
 
+    # HomeScore/AwayScore not na
     df[["HomePts", "AwayPts"]] = (
-        df.groupby(["GameId", "Period"])[["HomeScore", "AwayScore"]]
-        .diff(periods=1)
-        .fillna(0)
+        df.groupby("GameId")[["HomeScore", "AwayScore"]].diff(periods=1).fillna(0)
     )
 
-    # TODO: detect errors
-    df.loc[(df["HomePts"] < 0) | df["AwayPts"] < 0, ["HomePts", "AwayPts"]] = 0
+    # TODO: detect errors, pandera
+    # df.loc[(df["HomePts"] < 0) | (df["AwayPts"] < 0), ["HomePts", "AwayPts"]] = 0
+    assert (df["HomePts"] > 0).all()
+    assert (df["AwayPts"] > 0).all()
+    assert (df["ScoreMargin"] == df["HomeScore"] - df["AwayScore"]).all()
+    assert df["PossCount"].notna().all()
 
     # df = df.loc[df["EndEvent"] != "EndPeriod"]
 
@@ -159,23 +194,50 @@ def convert_homeaway_to_offdef(df):
     return df
 
 
-def sum_of_game_level(play, game):
+@pa.check_output(agg_schema)
+def aggregation_to_game_level(play, game):
     """clean by summation"""
     # play = play.loc[~((play["HomePts"] > 0) & (play["HomeOff"] == 1))]
     # play = play.loc[~((play["AwayPts"] > 0) & (play["HomeOff"] == 0))]
-    final_scores = play.groupby("GameId")[["HomePts", "AwayPts"]].sum()
-    return pd.merge(final_scores, game, on="GameId")
+    final_scores = (
+        play.groupby("GameId")[["HomeScore", "AwayScore"]]
+        .agg(["max", "last"])
+        .reset_index()
+    )
+
+    # score of last play equals max score
+    # assert (
+    #     final_scores[("HomeScore", "max")] == final_scores[("HomeScore", "last")]
+    # ).all()
+    # assert (
+    #     final_scores[("HomeScore", "max")] == final_scores[("HomeScore", "last")]
+    # ).all()
+
+    final_scores.columns = [
+        "_".join(col).rstrip("_") for col in final_scores.columns.values
+    ]
+    return pd.merge(
+        final_scores, game[["GameId", "HomeFinalScore", "AwayFinalScore"]], on="GameId",
+    )
 
 
 def filter_regular_plays(df):
     """filter out irregular plays"""
-    df = df.loc[df["EndEvent"] != "EndPeriod"]
+
+    # potential issue: time calculation
+    # homeoff is null: mostly timeout or ejection
+    df = df.loc[(df["EndEvent"] != "EndPeriod") & df["HomeOff"].notna()]
 
     # remove plays without off team
-    df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
+    # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
 
     # missing players: 4.5%
-    df = df.loc[(df["HomeNumPlayers"] == 5) & (df["AwayNumPlayers"] == 5)]
+    # optional for zq
+    bad_possession = df.loc[
+        (df["HomeNumPlayers"] == 5) & (df["AwayNumPlayers"] == 5),
+        ["GameId", "PossCount"],
+    ]
+    df = df.loc[~df[["GameId", "PossCount"]].isin(bad_possession)]
 
     # df.loc[df["SecSinceLastPlay"] > 24, "SecSinceLastPlay"] = 24
     df.loc[df["SecSinceLastPlay"] > 30, "SecSinceLastPlay"] = 30
@@ -184,9 +246,19 @@ def filter_regular_plays(df):
     return df
 
 
-def filter_possessions_with_extra_players(df):
-    """filter out plays in a single possession with more than 5 players"""
-    major_players = df.groupby(["GameId", "PossCount"] + column_names("id"))
+def players_of_possession(df):
+    """players who use most of the possession"""
+    df["SumSec"] = df.groupby(["GameId", "PossCount"] + column_names("id"))[
+        "SecSinceLastPlay"
+    ].transform(sum)
+    df_id = (
+        df.sort_values(["GameId", "PossCount", "SumSec"], ascending=[True, True, False])
+        .groupby(["GameId", "PossCount"])[column_names("id")]
+        .first()
+    )
+    return pd.merge(
+        df.drop(columns=column_names("id")), df_id, on=["GameId", "PossCount"]
+    )
 
 
 def encode_play_event(df):
@@ -264,12 +336,13 @@ def collapse_plays(df, level="possession"):
         raise ValueError(f"level must be possession or chance, but get {level}.")
 
     # TODO: use original scoremargin
-    result["ScoreMargin"] = (
-        result["HomeScore"]
-        - result["AwayScore"]
-        - result["HomePts"]
-        + result["AwayPts"]
-    )
+    # result["ScoreMargin"] = (
+    #     result["HomeScore"]
+    #     - result["AwayScore"]
+    #     - result["HomePts"]
+    #     + result["AwayPts"]
+    # )
+    result["ScoreMargin"] = result.groupby("GameId")["ScoreMargin"].shift(1).fillna(0)
     result["ScoreMargin"] = result["ScoreMargin"] * np.where(
         result["HomeOff"] == 1, 1, -1
     )
@@ -282,14 +355,14 @@ def processing():
     team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
     game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
-    return convert_homeaway_to_offdef(play)
+    return preprocess_play(play)
 
 
 if __name__ == "__main__":
     """main script"""
 
-    # engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-    # team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
-    # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
-    # play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
+    engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
+    team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
+    game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
+    play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
     processing()

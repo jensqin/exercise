@@ -16,7 +16,12 @@ ENGINE_CONFIG = auth.load_url_dict(prefix=["DEV_NBA.",])
 # _SQL_PATH = {"play": "playbyplay.sql", "game": "game.sql"}
 SQL_PATH = {
     key: "nbastats/sql/" + value
-    for key, value in {"play": "playbyplay.sql", "game": "game.sql"}.items()
+    for key, value in {
+        "play": "playbyplay.sql",
+        "game": "game.sql",
+        "player": "player.sql",
+        "team": "team.sql",
+    }.items()
 }
 
 # S3_BUCKET = "bla-basketball-models"

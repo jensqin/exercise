@@ -4,9 +4,12 @@ import pandas as pd
 import pandera as pa
 import sqlalchemy
 
+# os.chdir("../..")
+# os.getcwd()
+
 from bla_python_db_utilities.parser import parse_sql
 from settings import ENGINE_CONFIG, SQL_PATH
-from nbastats.common.playbyplay import column_names, convert_homeaway_to_offdef
+from nbastats.common.playbyplay import column_names, preprocess_play
 
 
 def usage_player_id(df):
@@ -16,38 +19,59 @@ def usage_player_id(df):
     # event_columns = [
     #     f"{x}Player{y}Event" for x in ["Home", "Away"] for y in range(1, 6)
     # ]
-    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event"),] = df.loc[
-        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event"),
-    ].replace({"Ast", None})
+    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")] = df.loc[
+        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")
+    ].replace({"Ast": None})
 
     # # insert 0 for null playerId
     # id_columns = [f"{x}Player{y}Id" for x in ["Home", "Away"] for y in range(1, 6)]
     df[column_names("id")] = df[column_names("id")].fillna(0)
-    player_id = df
 
-    UsgId0 = (
-        player_id.loc[player_id["HomeOff"] == 0, column_names("away_event")].notnan()
-        * player_id.loc[player_id["HomeOff"] == 0, column_names("away_id")]
-    ).sum()
-    UsgId1 = (
-        player_id.loc[player_id["HomeOff"] == 1, column_names("home_event")].notnan()
-        * player_id.loc[player_id["HomeOff"] == 1, column_names("home_id")]
-    ).sum()
+    # only one player uses a possession
+    assert (
+        df.loc[df["HomeOff"] == 0, column_names("away_event")].notna().sum(axis=1) < 2
+    ).all()
+    assert (
+        df.loc[df["HomeOff"] == 1, column_names("home_event")].notna().sum(axis=1) < 2
+    ).all()
 
-    player_id["PlayerId"] = None
-    player_id.loc[player_id["HomeOff"] == 0, "PlayerId"] = UsgId0
-    player_id.loc[player_id["HomeOff"] == 1, "PlayerId"] = UsgId1
-    player_id["PlayerId"] = player_id["PlayerId"].fillna(0)
+    UsgId0 = np.where(
+        df.loc[df["HomeOff"] == 0, column_names("away_event")].notna(),
+        df.loc[df["HomeOff"] == 0, column_names("away_id")],
+        0,
+    ).sum(axis=1)
+    UsgId1 = np.where(
+        df.loc[df["HomeOff"] == 1, column_names("home_event")].notna(),
+        df.loc[df["HomeOff"] == 1, column_names("home_id")],
+        0,
+    ).sum(axis=1)
 
-    return player_id
+    # df["PlayerId"] = None
+    # df.loc[df["HomeOff"] == 0, "PlayerId"] = UsgId0
+    # df.loc[df["HomeOff"] == 1, "PlayerId"] = UsgId1
+    # df["PlayerId"] = df["PlayerId"].fillna(0)
+    df["UsageId"] = np.where(df["HomeOff"] == 1, UsgId1, UsgId0)
 
     # player_ID_data$poss_game_id <- paste(player_ID_data$GameId, player_ID_data$PossCount)
     # unique_last_possession <- length(player_ID_data$poss_game_id) - match(unique(player_ID_data$poss_game_id), rev(player_ID_data$poss_game_id)) + 1
 
     # Assign the player_ids of the player responsible for using each possession
     # player_ID_data_reduced <- player_ID_data[unique_last_possession, ]
-    # player_ID_data_reduced <- player_ID_data_reduced[paste(player_ID_data_reduced$GameId, player_ID_data_reduced$PossCount) %in%
-    # paste(data$GameId, data$PossCount), ]
+
+    # last_play = df.groupby(["GameId", "PossCount"])["UsageId"].last()
+    df["UsageId"] = (
+        df.groupby(["GameId", "PossCount"])["UsageId"].transform("last").fillna(0)
+    )
+    df[column_names("off_id")] = np.where(
+        df["HomeOff"] == 1, df[column_names("home_id")], df[column_names("away_id")]
+    )
+    df[column_names("def_id")] = np.where(
+        df["HomeOff"] == 0, df[column_names("home_id")], df[column_names("away_id")]
+    )
+    return df.loc[
+        df[column_names("off_id").apply(lambda t: df["UsageId"] == t).any(axis=1)]
+    ]
+
     # map_player_ids_usage <- match(paste(data$GameId, data$PossCount), paste(player_ID_data_reduced$GameId, player_ID_data_reduced$PossCount))
     # data$UsageID <- player_ID_data_reduced[map_player_ids_usage, "PlayerId"]
     # data$UsageID[is.na(data$UsageID)] <- 0
@@ -58,7 +82,6 @@ def usage_player_id(df):
     #     data_event$Eventmsgtype != 8,
     #   c("GameId", "PossCount", "HomeLineup", "AwayLineup", "SecSinceLastPlay", "PlayNum")
     # ])[, .(SecSinceLastPlay = sum(SecSinceLastPlay), PlayNum = mean(PlayNum)), by = list(GameId, PossCount, HomeLineup, AwayLineup)]
-    # setDF(one_poss_lineup)
 
     # # Add UsageID
     # one_poss_lineup$UsageID <- data$UsageID[match(paste(one_poss_lineup$GameId, one_poss_lineup$PossCount), paste(data$GameId, data$PossCount))]
@@ -73,18 +96,51 @@ def usage_player_id(df):
     # )
     # one_poss_lineup$containsUsg[one_poss_lineup$UsageID == 0] <- NA
 
+    # check if any poss have bad usg player data
+    # mean(one_poss_lineup$containsUsg, na.rm = T) # > 99% of plays the usage player is included in the offensive players on court, other cases are likely data errors
 
-def encode_play_event(df):
-    """get unique play event"""
-    events = pd.unique(df[column_names("event")].values.ravel())
-    events_series = pd.Series(range(len(events)), events)
-    df[column_names("event")] = df[column_names("event")].apply(
-        lambda x: events_series[x]
+    # one_poss_lineup <- one_poss_lineup[order(one_poss_lineup$GameId, one_poss_lineup$PossCount, -one_poss_lineup$SecSinceLastPlay, one_poss_lineup$PlayNum), ]
+    # # Remove rows where Usg player not in lineup
+    # one_poss_lineup <- one_poss_lineup[which(one_poss_lineup$containsUsg == 1 |
+    # is.na(one_poss_lineup$containsUsg)), ]
+    # # Break tie by longest duration on court for the lineup
+    # one_poss_lineup <- one_poss_lineup[match(
+    # unique(paste(one_poss_lineup$GameId, one_poss_lineup$PossCount)),
+    # paste(one_poss_lineup$GameId, one_poss_lineup$PossCount)
+    # ), ]
+
+
+def summarize_data_frame(df, player):
+    df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
+    df = df.rename(
+        columns=dict(
+            zip(
+                column_names("off_id") + column_names("def_id"),
+                column_names("off_id_abbr") + column_names("def_id_abbr"),
+            )
+        )
+    )
+    # df["TimeRemain"] = df["SecRemainGame"]
+
+    # df.loc[df["Pts"] > 3, "Pts"] = 3
+    birth_dates = player[["PlayerId", "Dob"]]
+    for nth in range(1, 11):
+        df = pd.merge(
+            df,
+            birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
+            on=f"P{nth}",
+        )
+
+    df[column_names("age")] = df[column_names("age")].apply(
+        lambda s: (df["GameDate"] - s) / 365.25
     )
     return df
+    # Response
+    # data$PTS <- ifelse(data$HomeOff == 1, data$HomePts, data$AwayPts)
 
-def summarize_data_frame(data):
-    pass
+    # Home court advantage and game situation variables (time remaining and point differential)
+    # Add in days rest, and consecutive minutes played varibales ACTION
+    # HCA <- data$HomeOff
     # Score_Diff = data$ScoreMargin # perspective of offensive team
 
     # Time_Remaining <- data$SecRemainGame / 60 / 48
@@ -139,15 +195,65 @@ def summarize_data_frame(data):
     # data$postseason <- as.integer(substr(data$GameId, 1, 1))
     # postseason <- ifelse(data$postseason == 4, 1, 0)
 
-def processing():
+    # Control for capped possession duration
+    # chance level should reduce the skew
+    # duration <- data$SecSinceLastPlay
+    # # duration[duration < 5] <- 5
+    # # duration[duration > 25] <- 25
+
+    # proc_data <- cbind.data.frame(
+    # # y_exp = NA, # need to make separate pipline to write expected points to the database
+    # y = data$PTS, HomeAway = data$HomeOff, ScoreDiff = Score_Diff, Duration = duration, Season = data$Season, Playoffs = postseason, Time_Remaining,
+    # OffTeam = data$OffensiveTeamId, DefTeam = data$DefensiveTeamId,
+    # players_off[, 1:10],
+    # players_def[, 1:10]
+    # )
+
+    # proc_data$UsageID <- data$UsageID
+    # proc_data$PossCount <- data$PossCount
+    # proc_data$GameId <- data$GameId
+
+    # proc_data <- proc_data[rowSums(is.na(proc_data)) == 0, ]
+
+    # playerids <- sort(as.integer(as.character(unique(unlist(proc_data[, c("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10")])))))
+    # playerids_map <- 0:(length(playerids) - 1)
+
+    # teamids <- sort(as.integer(as.character(unique(unlist(proc_data[, c("OffTeam", "DefTeam")])))))
+    # teamids_map <- 0:(length(teamids) - 1)
+
+    # assign new ids to players
+    # for (i in 1:10) {
+    #   proc_data[, paste0("P", i)] <- playerids_map[match(proc_data[, paste0("P", i)], as.character(playerids))]
+    # }
+
+    # # new ids to teams
+    # proc_data[, "OffTeam"] <- teamids_map[match(proc_data[, "OffTeam"], teamids)]
+    # proc_data[, "DefTeam"] <- teamids_map[match(proc_data[, "DefTeam"], teamids)]
+
+    # team_map <- data.frame(teamids_map, teamids, name = teams$Name[match(teamids, teams$TeamId)])
+    # player_map <- data.frame(playerids_map, playerids, name = player_data$Name[match(playerids, player_data$PlayerId)])
+
+    # groups <- c(
+    #   0, 0, 0, 0, 0, 0, 1, 2,
+    #   rep(3, 5),
+    #   rep(4, 5),
+    #   rep(5, 5),
+    #   rep(6, 5),
+    #   7
+    # )
+
+    # groups <- data.frame(colname = colnames(proc_data)[-c(1, dim(proc_data)[2] - 1, dim(proc_data)[2])], group = groups)
+
+
+def zb_pipeline():
     """data processing"""
 
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
     team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
     game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
-    return convert_homeaway_to_offdef(play)
+    return preprocess_play(play)
 
 
 if __name__ == "__main__":
-    processing()
+    zb_pipeline()

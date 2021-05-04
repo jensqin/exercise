@@ -1,6 +1,7 @@
 SELECT play.GameId,
+    GameDate,
+    GameType,
     PlayNum,
-    play.Eventnum,
     Eventmsgtype,
     Season,
     HomeTeamId,
@@ -48,4 +49,11 @@ SELECT play.GameId,
 FROM Proc_NBAStats_PlayByPlay play
     JOIN Proc_Shots shot ON play.GameId = shot.GameId
     AND play.EventNum = shot.Eventnum
-WHERE Season > 2006;
+    JOIN (
+        SELECT GameId,
+            GameDate,
+            GameType
+        FROM Proc_NBAStats_Games
+    ) game ON play.GameId = game.GameId
+WHERE Season > 2006
+    AND play.GameId BETWEEN 21900001 AND 21900011;

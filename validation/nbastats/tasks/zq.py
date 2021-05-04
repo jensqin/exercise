@@ -6,7 +6,7 @@ import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
 from settings import ENGINE_CONFIG, SQL_PATH
-from nbastats.common.playbyplay import column_names, convert_homeaway_to_offdef
+from nbastats.common.playbyplay import column_names, preprocess_play
 
 
 def collapse_chance_level(df, level="chance"):
@@ -86,9 +86,20 @@ def collapse_chance_level(df, level="chance"):
     return result.reset_index()
 
 
+def encode_play_event(df):
+    """get unique play event"""
+    events = pd.unique(df[column_names("event")].values.ravel())
+    events_series = pd.Series(range(len(events)), events)
+    df[column_names("event")] = df[column_names("event")].apply(
+        lambda x: events_series[x]
+    )
+    return df
+
+
 def summarize_data(df):
     """summarize data frame"""
     pass
+
 
 def processing():
     """data processing"""
@@ -96,7 +107,7 @@ def processing():
     team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
     game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
-    return convert_homeaway_to_offdef(play)
+    return preprocess_play(play)
 
 
 if __name__ == "__main__":
