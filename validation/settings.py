@@ -24,8 +24,7 @@ SQL_PATH = {
     }.items()
 }
 
-# S3_BUCKET = "bla-basketball-models"
-# HPARAMS_URL = "s3://" + S3_BUCKET + "/NBA/zqin-models/hyperparameters"
+S3_FOLDER = "s3://bla-basketball-models/processing/"
 # HPARAMS_PATH = "nba/hparams.json"
 # MODEL_URL = "NBA/zqin-models/models"
 # DATALOADER_URL = "NBA/zqin-models/dataloaders"

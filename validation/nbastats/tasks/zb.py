@@ -3,12 +3,14 @@ import numpy as np
 import pandas as pd
 import pandera as pa
 import sqlalchemy
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
 from bla_python_db_utilities.parser import parse_sql
 
 sys.path.append("./")
 
 from settings import ENGINE_CONFIG, SQL_PATH
+from nbastats.common.encoder import encoder_from_s3
 from nbastats.common.playbyplay import column_names, common_play
 
 
@@ -105,6 +107,8 @@ def usage_player_id(df, collapsed):
                 "PossCount",
                 "GameDate",
                 "GameType",
+                "OffTeam",
+                "DefTeam",
                 "HomeOff",
                 "Duration",
                 "HomePts",
@@ -295,6 +299,31 @@ def zb_summarise(df, player):
     # groups <- data.frame(colname = colnames(proc_data)[-c(1, dim(proc_data)[2] - 1, dim(proc_data)[2])], group = groups)
 
 
+def categorical_encoding(df, from_s3=False):
+    """encode categorical variables"""
+    player_id_cols = (
+        column_names("off_id_abbr") + column_names("def_id_abbr") + ["UsageId"]
+    )
+    if from_s3:
+        team_encoder = encoder_from_s3("team")
+        player_encoder = encoder_from_s3("player")
+    else:
+        team_encoder = OrdinalEncoder()
+        team_encoder.fit(df[["OffTeam", "DefTeam"]])
+        player_encoder = OrdinalEncoder()
+        player_encoder.fit(df[player_id_cols])
+    # df[["OffTeam", "DefTeam"]] = df[["OffTeam", "DefTeam"]].apply(
+    #     lambda t: team_encoder.transform(t.to_frame())
+    # )
+    for team_col in ["OffTeam", "DefTeam"]:
+        df[team_col] = team_encoder.transform(df[[team_col]])
+    # for player_col in player_id_cols:
+    #     df[player_col] = player_encoder.transform(df[[player_col]])
+    # df["OffTeam"] = team_encoder.transform(df[["OffTeam"]])
+    # df[player_id_cols] = player_encoder.transform(df[player_id_cols])
+    return df
+
+
 def zb_pipeline():
     """data processing"""
 
@@ -305,8 +334,9 @@ def zb_pipeline():
     player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
     play, possession = common_play(play)
     possession = usage_player_id(play, possession)
-    return zb_summarise(possession, player)
+    result = zb_summarise(possession, player)
+    return categorical_encoding(result, from_s3=True)
 
 
 if __name__ == "__main__":
-    zb_pipeline()
+    df = zb_pipeline()

@@ -29,7 +29,6 @@ def collapse_chance_level(df, level="chance"):
             "OffensiveTeamId",
             "DefensiveTeamId",
             "PlayNum",
-            "Eventnum",
             "HomeScore",
             "AwayScore",
         ]
@@ -101,7 +100,7 @@ def summarize_data(df):
     pass
 
 
-def processing():
+def zq_pipeline():
     """data processing"""
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
     team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
@@ -111,4 +110,4 @@ def processing():
 
 
 if __name__ == "__main__":
-    processing()
+    zq_pipeline()

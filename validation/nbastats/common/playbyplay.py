@@ -311,6 +311,8 @@ def collapse_plays(df, level="possession"):
             Season=("Season", "first"),
             GameDate=("GameDate", "first"),
             GameType=("GameType", "first"),
+            OffTeam=("OffensiveTeamId", "first"),
+            DefTeam=("DefensiveTeamId", "first"),
             Period=("Period", "first"),
             HomeOff=("HomeOff", "first"),
             SecRemainGame=("SecRemainGame", "max"),
@@ -330,16 +332,22 @@ def collapse_plays(df, level="possession"):
         )
         result = collapsed.groupby(["GameId", "ChanceCount"]).agg(
             Season=("Season", "first"),
+            GameDate=("GameDate", "first"),
+            GameType=("GameType", "first"),
+            OffTeam=("OffensiveTeamId", "first"),
+            DefTeam=("DefensiveTeamId", "first"),
             Period=("Period", "first"),
             HomeOff=("HomeOff", "first"),
             SecRemainGame=("SecRemainGame", "max"),
-            PlayNum_min=("PlayNum", "min"),
-            PlayNum_max=("PlayNum", "max"),
+            StartPlayNum=("PlayNum", "min"),
+            # PlayNum_max=("PlayNum", "max"),
             HomeScore=("HomeScore", "max"),
             AwayScore=("AwayScore", "max"),
             HomePts=("HomePts", "sum"),
             AwayPts=("AwayPts", "sum"),
-            SecSinceLastPlay=("SecSinceLastPlay", "sum"),
+            Duration=("SecSinceLastPlay", "sum"),
+            ShotDistance=("ShotDistance", "mean"),
+            ShotAngle=("ShotAngle", "mean"),
         )
     else:
         raise ValueError(f"level must be possession or chance, but get {level}.")
@@ -361,8 +369,6 @@ def collapse_plays(df, level="possession"):
 def load_data(name):
     """data processing"""
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-    # team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
-    # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     return pd.read_sql(parse_sql(SQL_PATH[name], False), engine)
 
 
