@@ -14,4 +14,4 @@ class InputSchema(pa.SchemaModel):
 
 
 class OutputSchema(InputSchema):
-    revenue: Series[float]
+    revenue: Series[float] = pa.Column()

@@ -1,3 +1,4 @@
+from nbastats.tasks.zq import summarize_data
 import os
 import numpy as np
 import pandas as pd
@@ -9,23 +10,30 @@ import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
 from settings import ENGINE_CONFIG, SQL_PATH
-from nbastats.common.playbyplay import column_names, preprocess_play
+from nbastats.common.playbyplay import column_names, common_play, preprocess_play
 
 
-def usage_player_id(df):
+def usage_player_id(df, collapsed):
     """get usage player id"""
 
     # remove ast as event
     # event_columns = [
     #     f"{x}Player{y}Event" for x in ["Home", "Away"] for y in range(1, 6)
     # ]
+    df = df.loc[
+        :,
+        ["GameId", "PossCount", "HomeOff", "Eventmsgtype"]
+        + column_names("id")
+        + column_names("event"),
+    ]
     df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")] = df.loc[
         df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")
     ].replace({"Ast": None})
+    df = df.drop(columns="Eventmsgtype")
 
     # # insert 0 for null playerId
     # id_columns = [f"{x}Player{y}Id" for x in ["Home", "Away"] for y in range(1, 6)]
-    df[column_names("id")] = df[column_names("id")].fillna(0)
+    # df[column_names("id")] = df[column_names("id")].fillna(0)
 
     # only one player uses a possession
     assert (
@@ -47,10 +55,10 @@ def usage_player_id(df):
     ).sum(axis=1)
 
     # df["PlayerId"] = None
-    # df.loc[df["HomeOff"] == 0, "PlayerId"] = UsgId0
-    # df.loc[df["HomeOff"] == 1, "PlayerId"] = UsgId1
+    df.loc[df["HomeOff"] == 0, "UsageId"] = UsgId0
+    df.loc[df["HomeOff"] == 1, "UsageId"] = UsgId1
     # df["PlayerId"] = df["PlayerId"].fillna(0)
-    df["UsageId"] = np.where(df["HomeOff"] == 1, UsgId1, UsgId0)
+    # df["UsageId"] = np.where(df["HomeOff"] == 1, UsgId1, UsgId0)
 
     # player_ID_data$poss_game_id <- paste(player_ID_data$GameId, player_ID_data$PossCount)
     # unique_last_possession <- length(player_ID_data$poss_game_id) - match(unique(player_ID_data$poss_game_id), rev(player_ID_data$poss_game_id)) + 1
@@ -60,17 +68,59 @@ def usage_player_id(df):
 
     # last_play = df.groupby(["GameId", "PossCount"])["UsageId"].last()
     df["UsageId"] = (
-        df.groupby(["GameId", "PossCount"])["UsageId"].transform("last").fillna(0)
+        df.loc[df["UsageId"] > 0]
+        .groupby(["GameId", "PossCount"])["UsageId"]
+        .transform("last")
     )
-    df[column_names("off_id")] = np.where(
-        df["HomeOff"] == 1, df[column_names("home_id")], df[column_names("away_id")]
-    )
-    df[column_names("def_id")] = np.where(
-        df["HomeOff"] == 0, df[column_names("home_id")], df[column_names("away_id")]
-    )
-    return df.loc[
-        df[column_names("off_id").apply(lambda t: df["UsageId"] == t).any(axis=1)]
+    df.loc[
+        df["HomeOff"] == 1, column_names("off_id") + column_names("def_id")
+    ] = df.loc[
+        df["HomeOff"] == 1, column_names("home_id") + column_names("away_id")
+    ].values
+    df.loc[
+        df["HomeOff"] == 0, column_names("off_id") + column_names("def_id")
+    ] = df.loc[
+        df["HomeOff"] == 0, column_names("away_id") + column_names("home_id")
+    ].values
+    df[column_names("off_id") + column_names("def_id")] = df[
+        column_names("off_id") + column_names("def_id")
+    ].astype("int")
+    # df[column_names("off_id") + column_names("def_id")] = np.where(
+    #     df["HomeOff"] == 1,
+    #     df[column_names("home_id") + column_names("away_id")].values,
+    #     df[column_names("away_id") + column_names("home_id")].values,
+    # )
+    df = df.loc[
+        df[column_names("off_id")]
+        .apply(lambda t: (df["UsageId"] == t) | df["UsageId"].isna())
+        .any(axis=1)
     ]
+    poss_usg = df.loc[
+        df["UsageId"].notna(), ["GameId", "PossCount", "UsageId"]
+    ].drop_duplicates()
+
+    result = pd.merge(
+        collapsed[
+            [
+                "GameId",
+                "PossCount",
+                "GameDate",
+                "GameType",
+                "HomeOff",
+                "Duration",
+                "HomePts",
+                "AwayPts",
+                "ShotDistance",
+                "ShotAngle",
+            ]
+        ],
+        df[
+            ["GameId", "PossCount"] + column_names("off_id") + column_names("def_id")
+        ].drop_duplicates(),
+        on=["GameId", "PossCount"],
+        how="left",
+    )
+    return pd.merge(result, poss_usg, on=["GameId", "PossCount"], how="left")
 
     # map_player_ids_usage <- match(paste(data$GameId, data$PossCount), paste(player_ID_data_reduced$GameId, player_ID_data_reduced$PossCount))
     # data$UsageID <- player_ID_data_reduced[map_player_ids_usage, "PlayerId"]
@@ -110,7 +160,7 @@ def usage_player_id(df):
     # ), ]
 
 
-def summarize_data_frame(df, player):
+def zb_summarise(df, player):
     df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
     df = df.rename(
         columns=dict(
@@ -129,10 +179,11 @@ def summarize_data_frame(df, player):
             df,
             birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
             on=f"P{nth}",
+            how="left",
         )
 
     df[column_names("age")] = df[column_names("age")].apply(
-        lambda s: (df["GameDate"] - s) / 365.25
+        lambda s: (df["GameDate"] - s).dt.days / 365.25
     )
     return df
     # Response
@@ -249,10 +300,13 @@ def zb_pipeline():
     """data processing"""
 
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-    team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
-    game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
+    # team = pd.read_sql(parse_sql(SQL_PATH["team"], False), engine)
+    # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
-    return preprocess_play(play)
+    player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
+    play, possession = common_play(play)
+    possession = usage_player_id(play, possession)
+    return zb_summarise(possession, player)
 
 
 if __name__ == "__main__":
