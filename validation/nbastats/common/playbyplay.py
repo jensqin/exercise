@@ -376,4 +376,4 @@ def common_play(play):
 
 if __name__ == "__main__":
     """main script"""
-    common_play()
+    print("This is common script.")

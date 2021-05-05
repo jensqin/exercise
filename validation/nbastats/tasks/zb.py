@@ -1,16 +1,15 @@
-from nbastats.tasks.zq import summarize_data
-import os
+import sys
 import numpy as np
 import pandas as pd
 import pandera as pa
 import sqlalchemy
 
-# os.chdir("../..")
-# os.getcwd()
-
 from bla_python_db_utilities.parser import parse_sql
+
+sys.path.append("./")
+
 from settings import ENGINE_CONFIG, SQL_PATH
-from nbastats.common.playbyplay import column_names, common_play, preprocess_play
+from nbastats.common.playbyplay import column_names, common_play
 
 
 def usage_player_id(df, collapsed):

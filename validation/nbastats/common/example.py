@@ -1,13 +1,16 @@
+import sys
 import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame, Series
 
+sys.path.append("./")
+
 from nbastats.schema.example import InputSchema, OutputSchema
 
 
-@pa.check_types
+@pa.check_types(lazy=True)
 def transform(df: DataFrame[InputSchema]) -> DataFrame[OutputSchema]:
-    return df.assign(revenue=101.0)
+    return df.assign(revenue=100.0)
 
 
 # df = pd.DataFrame(
@@ -21,8 +24,8 @@ def transform(df: DataFrame[InputSchema]) -> DataFrame[OutputSchema]:
 
 invalid_df = pd.DataFrame(
     {
-        "year": ["2001", "2002", "1999"],
-        "month": ["3", "6", "12"],
+        "year": ["2001", "2000", "1999"],
+        "month": ["3", "6", "16"],
         "day": ["200", "156", "365"],
     }
 )
