@@ -10,62 +10,6 @@ from bla_python_db_utilities.parser import parse_sql
 from nbastats.schema.playbyplay import play_schema
 from settings import ENGINE_CONFIG, SQL_PATH
 
-# engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-
-# game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
-# play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
-
-# sc = pa.infer_schema(player)
-# sc = pa.infer_schema(team)
-# print(sc.to_script())
-
-# play by play data types
-
-# GameId                  int64
-# PlayNum                 int64
-# Eventnum                int64
-# Eventmsgtype            int64
-# Season                  int64
-# HomeTeamId            float64
-# HomePlayer1Id         float64
-# HomePlayer2Id         float64
-# HomePlayer3Id         float64
-# HomePlayer4Id         float64
-# HomePlayer5Id         float64
-# AwayTeamId            float64
-# AwayPlayer1Id         float64
-# AwayPlayer2Id         float64
-# AwayPlayer3Id         float64
-# AwayPlayer4Id         float64
-# AwayPlayer5Id         float64
-# SecRemainGame           int64
-# Period                  int64
-# SecRemainPeriod         int64
-# ScoreMargin             int64
-# HomeOff               float64
-# StartEvent             object
-# EndEvent               object
-# HomePlayer1Event       object
-# HomePlayer2Event       object
-# HomePlayer3Event       object
-# HomePlayer4Event       object
-# HomePlayer5Event       object
-# AwayPlayer1Event       object
-# AwayPlayer2Event       object
-# AwayPlayer3Event       object
-# AwayPlayer4Event       object
-# AwayPlayer5Event       object
-# HomeNumPlayers        float64
-# AwayNumPlayers        float64
-# HomeFouls               int64
-# AwayFouls               int64
-# HomeScore               int64
-# AwayScore               int64
-# PossCount             float64
-# SecSinceLastPlay        int64
-# Eventmsgactiontype      int64
-# dtype: object
-
 
 def column_names(key):
     """get column names"""

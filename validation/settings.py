@@ -10,7 +10,7 @@ from bla_python_db_utilities import auth
 
 load_dotenv(find_dotenv(), override=True)
 
-ENGINE_CONFIG = auth.load_url_dict(prefix=["DEV_NBA.",])
+ENGINE_CONFIG = auth.load_url_dict(prefix=["DEV_NBA."])
 
 # SQL_DIR = "nbastats/sql"
 # _SQL_PATH = {"play": "playbyplay.sql", "game": "game.sql"}
