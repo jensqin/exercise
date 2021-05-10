@@ -9,9 +9,9 @@ class InputSchema(pa.SchemaModel):
     day: Series[int] = pa.Field(ge=0, le=365, coerce=True)
 
     @pa.dataframe_check
-    def length_limit(cls, df: pd.DataFrame) -> Series[bool]:
+    def length_limit(cls, df: DataFrame) -> Series[bool]:
         return len(df["year"]) >= 3
 
 
 class OutputSchema(InputSchema):
-    revenue: Series[float] = pa.Column()
+    revenue: Series[float]

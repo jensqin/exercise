@@ -8,7 +8,7 @@ from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder
 from bla_python_db_utilities.parser import parse_sql
 from settings import ENGINE_CONFIG, SQL_PATH
 from nbastats.common.encoder import encoder_from_s3
-from nbastats.common.playbyplay import column_names, common_play
+from nbastats.common.playbyplay import column_list, common_play
 
 
 def collapse_chance_level(df, level="chance"):
@@ -93,7 +93,7 @@ def categorical_encoding(df, from_s3=True):
     #     lambda x: events_series[x]
     # )
     player_id_cols = (
-        column_names("off_id_abbr") + column_names("def_id_abbr")
+        column_list("off_id_abbr") + column_list("def_id_abbr")
     )
     if from_s3:
         team_encoder = encoder_from_s3("team")
@@ -111,7 +111,7 @@ def categorical_encoding(df, from_s3=True):
         df[team_col] = team_encoder.transform(df[[team_col]])
     for player_col in player_id_cols:
         df[player_col] = player_encoder.transform(df[[player_col]])
-    for event_col in column_names("event"):
+    for event_col in column_list("event"):
         df[event_encoder.get_feature_names([event_col])] = event_encoder.transform(
             df[[event_col]]
         )
@@ -126,8 +126,8 @@ def summarise_data(df, player):
     df = df.rename(
         columns=dict(
             zip(
-                column_names("off_id") + column_names("def_id"),
-                column_names("off_id_abbr") + column_names("def_id_abbr"),
+                column_list("off_id") + column_list("def_id"),
+                column_list("off_id_abbr") + column_list("def_id_abbr"),
             )
         )
     )
@@ -143,7 +143,7 @@ def summarise_data(df, player):
             how="left",
         )
 
-    df[column_names("age")] = df[column_names("age")].apply(
+    df[column_list("age")] = df[column_list("age")].apply(
         lambda s: (df["GameDate"] - s).dt.days / 365.25
     )
     return df

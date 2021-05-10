@@ -11,7 +11,7 @@ sys.path.append("./")
 
 from settings import ENGINE_CONFIG, SQL_PATH
 from nbastats.common.encoder import encoder_from_s3
-from nbastats.common.playbyplay import column_names, common_play
+from nbastats.common.playbyplay import column_list, common_play
 
 
 def usage_player_id(df, collapsed):
@@ -24,11 +24,11 @@ def usage_player_id(df, collapsed):
     df = df.loc[
         :,
         ["GameId", "PossCount", "HomeOff", "Eventmsgtype"]
-        + column_names("id")
-        + column_names("event"),
+        + column_list("id")
+        + column_list("event"),
     ]
-    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")] = df.loc[
-        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_names("event")
+    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("event")] = df.loc[
+        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("event")
     ].replace({"Ast": None})
     df = df.drop(columns="Eventmsgtype")
 
@@ -38,20 +38,20 @@ def usage_player_id(df, collapsed):
 
     # only one player uses a possession
     assert (
-        df.loc[df["HomeOff"] == 0, column_names("away_event")].notna().sum(axis=1) < 2
+        df.loc[df["HomeOff"] == 0, column_list("away_event")].notna().sum(axis=1) < 2
     ).all()
     assert (
-        df.loc[df["HomeOff"] == 1, column_names("home_event")].notna().sum(axis=1) < 2
+        df.loc[df["HomeOff"] == 1, column_list("home_event")].notna().sum(axis=1) < 2
     ).all()
 
     UsgId0 = np.where(
-        df.loc[df["HomeOff"] == 0, column_names("away_event")].notna(),
-        df.loc[df["HomeOff"] == 0, column_names("away_id")],
+        df.loc[df["HomeOff"] == 0, column_list("away_event")].notna(),
+        df.loc[df["HomeOff"] == 0, column_list("away_id")],
         0,
     ).sum(axis=1)
     UsgId1 = np.where(
-        df.loc[df["HomeOff"] == 1, column_names("home_event")].notna(),
-        df.loc[df["HomeOff"] == 1, column_names("home_id")],
+        df.loc[df["HomeOff"] == 1, column_list("home_event")].notna(),
+        df.loc[df["HomeOff"] == 1, column_list("home_id")],
         0,
     ).sum(axis=1)
 
@@ -67,17 +67,17 @@ def usage_player_id(df, collapsed):
         .transform("last")
     )
     df.loc[
-        df["HomeOff"] == 1, column_names("off_id") + column_names("def_id")
+        df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")
     ] = df.loc[
-        df["HomeOff"] == 1, column_names("home_id") + column_names("away_id")
+        df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
     ].values
     df.loc[
-        df["HomeOff"] == 0, column_names("off_id") + column_names("def_id")
+        df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")
     ] = df.loc[
-        df["HomeOff"] == 0, column_names("away_id") + column_names("home_id")
+        df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
     ].values
-    df[column_names("off_id") + column_names("def_id")] = df[
-        column_names("off_id") + column_names("def_id")
+    df[column_list("off_id") + column_list("def_id")] = df[
+        column_list("off_id") + column_list("def_id")
     ].astype("int")
     # df[column_names("off_id") + column_names("def_id")] = np.where(
     #     df["HomeOff"] == 1,
@@ -85,7 +85,7 @@ def usage_player_id(df, collapsed):
     #     df[column_names("away_id") + column_names("home_id")].values,
     # )
     df = df.loc[
-        df[column_names("off_id")]
+        df[column_list("off_id")]
         .apply(lambda t: (df["UsageId"] == t) | df["UsageId"].isna())
         .any(axis=1)
     ]
@@ -111,7 +111,7 @@ def usage_player_id(df, collapsed):
             ]
         ],
         df[
-            ["GameId", "PossCount"] + column_names("off_id") + column_names("def_id")
+            ["GameId", "PossCount"] + column_list("off_id") + column_list("def_id")
         ].drop_duplicates(),
         on=["GameId", "PossCount"],
         how="left",
@@ -124,8 +124,8 @@ def zb_summarise(df, player):
     df = df.rename(
         columns=dict(
             zip(
-                column_names("off_id") + column_names("def_id"),
-                column_names("off_id_abbr") + column_names("def_id_abbr"),
+                column_list("off_id") + column_list("def_id"),
+                column_list("off_id_abbr") + column_list("def_id_abbr"),
             )
         )
     )
@@ -141,7 +141,7 @@ def zb_summarise(df, player):
             how="left",
         )
 
-    df[column_names("age")] = df[column_names("age")].apply(
+    df[column_list("age")] = df[column_list("age")].apply(
         lambda s: (df["GameDate"] - s).dt.days / 365.25
     )
     return df
@@ -149,7 +149,7 @@ def zb_summarise(df, player):
 
 def categorical_encoding(df, from_s3=False):
     """encode categorical variables"""
-    player_id_cols = column_names("off_id_abbr") + column_names("def_id_abbr")
+    player_id_cols = column_list("off_id_abbr") + column_list("def_id_abbr")
     if from_s3:
         team_encoder = encoder_from_s3("team")
         player_encoder = encoder_from_s3("player")

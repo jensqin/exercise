@@ -3,15 +3,16 @@ import numpy as np
 from numpy.lib.npyio import load
 import pandas as pd
 import pandera as pa
+from pandera.typing import DataFrame
 import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
 
-from nbastats.schema.playbyplay import play_schema
+from nbastats.schema.playbyplay import InputPlaySchema, PreProcessedPlaySchema
 from settings import ENGINE_CONFIG, SQL_PATH
 
 
-def column_names(key):
+def column_list(key):
     """get column names"""
     name_dict = {
         "id": [
@@ -100,8 +101,10 @@ def column_names(key):
     return name_dict[key]
 
 
-# @pa.check_io(output=play_schema)
-def preprocess_play(df):
+@pa.check_types
+def preprocess_play(
+    df: DataFrame[InputPlaySchema],
+) -> DataFrame[PreProcessedPlaySchema]:
     """preprocess play"""
 
     # important
@@ -124,20 +127,43 @@ def preprocess_play(df):
 
     # TODO: detect errors, pandera
     # df.loc[(df["HomePts"] < 0) | (df["AwayPts"] < 0), ["HomePts", "AwayPts"]] = 0
-    assert (df["HomePts"] >= 0).all()
-    assert (df["AwayPts"] >= 0).all()
+    # assert (df["HomePts"] >= 0).all()
+    # assert (df["AwayPts"] >= 0).all()
 
     # TODO: solve data issue
     df["ScoreMargin"] = df["HomeScore"] - df["AwayScore"]
-    assert (df["ScoreMargin"] == df["HomeScore"] - df["AwayScore"]).all()
+    # assert (df["ScoreMargin"] == df["HomeScore"] - df["AwayScore"]).all()
 
     df = df.loc[df["EndEvent"] != "EndPeriod"]
-    assert df["PossCount"].notna().all()
+    # assert df["PossCount"].notna().all()
 
     # # remove plays without off team
     # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
 
     # df = df.loc[(df["HomeNumPlayers"] == 5) & (df["AwayNumPlayers"] == 5)]
+
+    # potential issue: time calculation
+    # homeoff is null: mostly timeout or ejection
+    df = df.loc[(df["EndEvent"] != "EndPeriod") & df["HomeOff"].notna()]
+
+    # remove plays without off team
+    # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
+
+    # missing players: 4.5%
+    # optional for zq
+    bad_possession = df.loc[
+        (df["HomeNumPlayers"] != 5) | (df["AwayNumPlayers"] != 5),
+        ["GameId", "PossCount"],
+    ].drop_duplicates()
+    # df = df.loc[~df[["GameId", "PossCount"]].isin(bad_possession).all()]
+    df = pd.merge(
+        df, bad_possession, how="left", on=["GameId", "PossCount"], indicator=True
+    )
+    df = df.loc[df["_merge"] == "left_only"].drop(columns="_merge")
+
+    # df.loc[df["SecSinceLastPlay"] > 24, "SecSinceLastPlay"] = 24
+    df.loc[df["SecSinceLastPlay"] > 30, "SecSinceLastPlay"] = 30
+    df.loc[df["SecSinceLastPlay"] < 0, "SecSinceLastPlay"] = 0
 
     return df
 
@@ -169,55 +195,55 @@ def aggregation_to_game_level(play, game):
     )
 
 
-def filter_regular_plays(df):
-    """filter out irregular plays"""
+# def filter_regular_plays(df):
+#     """filter out irregular plays"""
 
-    # potential issue: time calculation
-    # homeoff is null: mostly timeout or ejection
-    df = df.loc[(df["EndEvent"] != "EndPeriod") & df["HomeOff"].notna()]
+#     # potential issue: time calculation
+#     # homeoff is null: mostly timeout or ejection
+#     df = df.loc[(df["EndEvent"] != "EndPeriod") & df["HomeOff"].notna()]
 
-    # remove plays without off team
-    # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
+#     # remove plays without off team
+#     # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
 
-    # missing players: 4.5%
-    # optional for zq
-    bad_possession = df.loc[
-        (df["HomeNumPlayers"] != 5) | (df["AwayNumPlayers"] != 5),
-        ["GameId", "PossCount"],
-    ].drop_duplicates()
-    # df = df.loc[~df[["GameId", "PossCount"]].isin(bad_possession).all()]
-    df = pd.merge(
-        df, bad_possession, how="left", on=["GameId", "PossCount"], indicator=True
-    )
-    df = df.loc[df["_merge"] == "left_only"].drop(columns="_merge")
+#     # missing players: 4.5%
+#     # optional for zq
+#     bad_possession = df.loc[
+#         (df["HomeNumPlayers"] != 5) | (df["AwayNumPlayers"] != 5),
+#         ["GameId", "PossCount"],
+#     ].drop_duplicates()
+#     # df = df.loc[~df[["GameId", "PossCount"]].isin(bad_possession).all()]
+#     df = pd.merge(
+#         df, bad_possession, how="left", on=["GameId", "PossCount"], indicator=True
+#     )
+#     df = df.loc[df["_merge"] == "left_only"].drop(columns="_merge")
 
-    # df.loc[df["SecSinceLastPlay"] > 24, "SecSinceLastPlay"] = 24
-    df.loc[df["SecSinceLastPlay"] > 30, "SecSinceLastPlay"] = 30
-    df.loc[df["SecSinceLastPlay"] < 0, "SecSinceLastPlay"] = 0
+#     # df.loc[df["SecSinceLastPlay"] > 24, "SecSinceLastPlay"] = 24
+#     df.loc[df["SecSinceLastPlay"] > 30, "SecSinceLastPlay"] = 30
+#     df.loc[df["SecSinceLastPlay"] < 0, "SecSinceLastPlay"] = 0
 
-    return df
+#     return df
 
 
 def players_of_possession(df):
     """players who use most of the possession"""
-    df["SumSec"] = df.groupby(["GameId", "PossCount"] + column_names("id"))[
+    df["SumSec"] = df.groupby(["GameId", "PossCount"] + column_list("id"))[
         "SecSinceLastPlay"
     ].transform(sum)
     df_id = (
         df.sort_values(["GameId", "PossCount", "SumSec"], ascending=[True, True, False])
-        .groupby(["GameId", "PossCount"])[column_names("id")]
+        .groupby(["GameId", "PossCount"])[column_list("id")]
         .first()
     )
     return pd.merge(
-        df.drop(columns=column_names("id")), df_id, on=["GameId", "PossCount"]
+        df.drop(columns=column_list("id")), df_id, on=["GameId", "PossCount"]
     )
 
 
 def encode_play_event(df):
     """get unique play event"""
-    events = pd.unique(df[column_names("event")].values.ravel())
+    events = pd.unique(df[column_list("event")].values.ravel())
     events_series = pd.Series(range(len(events)), events)
-    df[column_names("event")] = df[column_names("event")].apply(
+    df[column_list("event")] = df[column_list("event")].apply(
         lambda x: events_series[x]
     )
     return df
@@ -310,17 +336,17 @@ def collapse_plays(df, level="possession"):
     return result.reset_index()
 
 
-def load_data(name):
-    """data processing"""
-    engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-    return pd.read_sql(parse_sql(SQL_PATH[name], False), engine)
+# def load_data(name):
+#     """data processing"""
+#     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
+#     return pd.read_sql(parse_sql(SQL_PATH[name], False), engine)
 
 
 def common_play(play):
     """ common processing for play"""
     # play = load_data("play")
     df = preprocess_play(play)
-    df = filter_regular_plays(df)
+    # df = filter_regular_plays(df)
     return df, collapse_plays(df)
 
 
