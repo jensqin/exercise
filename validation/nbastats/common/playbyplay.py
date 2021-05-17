@@ -8,7 +8,7 @@ import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
 
-from nbastats.schema.playbyplay import InputPlaySchema, PreProcessedPlaySchema
+from nbastats.schema.playbyplay import play_schema
 from settings import ENGINE_CONFIG, SQL_PATH
 
 
@@ -101,10 +101,8 @@ def column_list(key):
     return name_dict[key]
 
 
-@pa.check_types
-def preprocess_play(
-    df: DataFrame[InputPlaySchema],
-) -> DataFrame[PreProcessedPlaySchema]:
+@pa.check_input(play_schema)
+def preprocess_play(df):
     """preprocess play"""
 
     # important

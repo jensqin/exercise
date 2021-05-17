@@ -47,4 +47,4 @@ if __name__ == "__main__":
     trainer.save_checkpoint("ckpt/nba_2018.ckpt")
     save_output(model, args.out_file)
     print(datetime.now() - start)
-    os.system('say "Your Python Program has Finished"')
+    # os.system('say "Your Python Program has Finished"')

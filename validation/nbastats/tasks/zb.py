@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import pandas as pd
+import awswrangler as wr
 import pandera as pa
 import sqlalchemy
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
@@ -9,7 +10,7 @@ from bla_python_db_utilities.parser import parse_sql
 
 sys.path.append("./")
 
-from settings import ENGINE_CONFIG, SQL_PATH
+from settings import ENGINE_CONFIG, SQL_PATH, S3_FOLDER
 from nbastats.common.encoder import encoder_from_s3
 from nbastats.common.playbyplay import column_list, common_play
 
@@ -66,14 +67,10 @@ def usage_player_id(df, collapsed):
         .groupby(["GameId", "PossCount"])["UsageId"]
         .transform("last")
     )
-    df.loc[
-        df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")
-    ] = df.loc[
+    df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
         df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
     ].values
-    df.loc[
-        df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")
-    ] = df.loc[
+    df.loc[df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")] = df.loc[
         df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
     ].values
     df[column_list("off_id") + column_list("def_id")] = df[
@@ -187,3 +184,12 @@ def zb_pipeline():
 
 if __name__ == "__main__":
     df = zb_pipeline()
+    # wr.s3.to_parquet(
+    #     df=df,
+    #     path=S3_FOLDER + "zb_play",
+    #     dataset=True,
+    #     mode="overwrite",
+    #     # table="proc_play",
+    #     # database="nbastats",
+    # )
+    print("Uploaded parquet file to S3.")

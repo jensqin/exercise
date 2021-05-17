@@ -1,12 +1,16 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import pandera as pa
 import sqlalchemy
+import awswrangler as wr
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder
 
+sys.path.append("./")
+
 from bla_python_db_utilities.parser import parse_sql
-from settings import ENGINE_CONFIG, SQL_PATH
+from settings import ENGINE_CONFIG, SQL_PATH, S3_FOLDER
 from nbastats.common.encoder import encoder_from_s3
 from nbastats.common.playbyplay import column_list, common_play
 
@@ -92,9 +96,7 @@ def categorical_encoding(df, from_s3=True):
     # df[column_names("event")] = df[column_names("event")].apply(
     #     lambda x: events_series[x]
     # )
-    player_id_cols = (
-        column_list("off_id_abbr") + column_list("def_id_abbr")
-    )
+    player_id_cols = column_list("off_id_abbr") + column_list("def_id_abbr")
     if from_s3:
         team_encoder = encoder_from_s3("team")
         player_encoder = encoder_from_s3("player")
@@ -163,4 +165,7 @@ def zq_pipeline():
 
 
 if __name__ == "__main__":
-    zq_pipeline()
+    df = zq_pipeline()
+    wr.s3.to_parquet(
+        df=df, path=S3_FOLDER + "zq_play", dataset=True, mode="overwrite"
+    )

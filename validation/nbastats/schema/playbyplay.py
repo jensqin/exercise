@@ -1,53 +1,155 @@
-import pandas as pd
-from pandas import Timestamp
 import pandera as pa
-from pandera.typing import DataFrame, Series, DateTime, String
+from pandera import (
+    DataFrameSchema,
+    Column,
+    Check,
+    Index,
+    MultiIndex,
+    PandasDtype,
+)
 
+play_schema = DataFrameSchema(
+    columns={
+        "GameId": Column(pandas_dtype=PandasDtype.Int64),
+        "PlayNum": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=Check.greater_than_or_equal_to(min_value=0.0),
+        ),
+        "Eventmsgtype": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=1.0),
+                Check.less_than_or_equal_to(max_value=13.0),
+            ],
+        ),
+        "Season": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=Check.greater_than_or_equal_to(min_value=1980),
+        ),
+        "HomeTeamId": Column(pandas_dtype=PandasDtype.Float64, nullable=True),
+        "HomePlayer\dId": Column(
+            pandas_dtype=PandasDtype.Float64, nullable=True, regex=True,
+        ),
+        "AwayTeamId": Column(pandas_dtype=PandasDtype.Float64, nullable=True),
+        "AwayPlayer\dId": Column(
+            pandas_dtype=PandasDtype.Float64, nullable=True, regex=True,
+        ),
+        "SecRemainGame": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=Check.greater_than_or_equal_to(min_value=0.0),
+        ),
+        "Period": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=1.0),
+                Check.less_than_or_equal_to(max_value=10.0),
+            ],
+        ),
+        "SecRemainPeriod": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                Check.less_than_or_equal_to(max_value=720.0),
+            ],
+        ),
+        "ScoreMargin": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=-70.0),
+                Check.less_than_or_equal_to(max_value=70.0),
+            ],
+        ),
+        "HomeOff": Column(
+            pandas_dtype=PandasDtype.Float64, checks=Check.isin([0, 1]), nullable=True,
+        ),
+        "StartEvent": Column(pandas_dtype=PandasDtype.String, nullable=True),
+        "EndEvent": Column(pandas_dtype=PandasDtype.String, nullable=True),
+        "HomePlayer\dEvent": Column(
+            pandas_dtype=PandasDtype.String, nullable=True, regex=True
+        ),
+        "AwayPlayer\dEvent": Column(
+            pandas_dtype=PandasDtype.String, nullable=True, regex=True
+        ),
+        "HomeNumPlayers": Column(
+            pandas_dtype=PandasDtype.Float64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=1.0),
+                Check.less_than_or_equal_to(max_value=6.0),
+            ],
+            nullable=True,
+        ),
+        "AwayNumPlayers": Column(
+            pandas_dtype=PandasDtype.Float64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=1.0),
+                Check.less_than_or_equal_to(max_value=6.0),
+            ],
+            nullable=True,
+        ),
+        "HomeFouls": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=18.0),
+            ],
+        ),
+        "AwayFouls": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=22.0),
+            ],
+        ),
+        "HomeScore": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=168.0),
+            ],
+        ),
+        "AwayScore": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=168.0),
+            ],
+        ),
+        "PossCount": Column(
+            pandas_dtype=PandasDtype.Float64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=292.0),
+            ],
+            nullable=True,
+        ),
+        "SecSinceLastPlay": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                # Check.less_than_or_equal_to(max_value=129.0),
+            ],
+        ),
+        "Eventmsgactiontype": Column(
+            pandas_dtype=PandasDtype.Int64,
+            checks=[
+                Check.greater_than_or_equal_to(min_value=0.0),
+                Check.less_than_or_equal_to(max_value=110.0),
+            ],
+        ),
+    },
+    # index=Index(
+    #     pandas_dtype=PandasDtype.Int64,
+    #     checks=[
+    #         Check.greater_than_or_equal_to(min_value=0.0),
+    #         Check.less_than_or_equal_to(max_value=7017726.0),
+    #     ],
+    #
+    #     coerce=False,
+    #     name=None,
+    # ),
+    coerce=True,
+    strict=False,
+    name=None,
+)
 
-class InputPlaySchema(pa.SchemaModel):
-    """input playbyplay data schema"""
-
-    GameId: Series[int] = pa.Field(ge=20000000)
-    GameDate: Series[DateTime] = pa.Field(
-        ge=Timestamp("2000-01-01 00:00:00"), coerce=True
-    )
-    GameType: Series[int] = pa.Field(isin=[0, 1])
-    PlayNum: Series[int] = pa.Field(ge=0)
-    Eventmsgtype: Series[int] = pa.Field(ge=0)
-    Season: Series[int] = pa.Field(ge=2000)
-    SecRemainPeriod: Series[int] = pa.Field(ge=0)
-    ScoreMargin: Series[int]
-    HomeOff: Series[int] = pa.Field(isin=[0, 1], nullable=True)
-    StartEvent: Series[String]
-    EndEvent: Series[String]
-    PossCount: Series[int] = pa.Field(ge=0, nullable=True)
-    SecSinceLastPlay: Series[int] = pa.Field(ge=0)
-    Eventmsgactiontype: Series[int] = pa.Field(ge=0)
-    ShotDistance: Series[float] = pa.Field(ge=0, nullable=True)
-    ShotAngle: Series[float] = pa.Field(ge=0, le=180, nullable=True)
-
-    # regex columns
-    TeamId: Series[int] = pa.Field(alias=".*TeamId", regex=True)
-    PlayerId: Series[int] = pa.Field(alias=".*Player\dId", regex=True, nullable=True)
-    PlayerEvent: Series[String] = pa.Field(
-        alias=".*Player\dEvent", regex=True, nullable=True
-    )
-    NumPlayers: Series[int] = pa.Field(alias=".*NumPlayers", regex=True, ge=0)
-    Fouls: Series[int] = pa.Field(alias=".*Fouls", regex=True, ge=0)
-    Score: Series[int] = pa.Field(alias=".*Score", regex=True, ge=0)
-    Pos: Series[float] = pa.Field(alias="Pos.", regex=True, nullable=True)
-
-
-class PreProcessedPlaySchema(InputPlaySchema):
-    """preprocessed play schema"""
-
-    PossCount: Series[int] = pa.Field(ge=0)
-    OffensiveTeamId: Series[int] = pa.Field(ge=0)
-    DefensiveTeamId: Series[int] = pa.Field(ge=0)
-    HomePts: Series[int] = pa.Field(ge=0)
-    AwayPts: Series[int] = pa.Field(ge=0)
-
-
-# class CollapsedPlaySchema(pa.SchemaModel):
-#     """collapsed play schema"""
-#     pass
+# processed_schema = play_schema.add_columns()

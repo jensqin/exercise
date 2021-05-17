@@ -162,8 +162,8 @@ class NBADataModule(pl.LightningDataModule):
         #     stratify_cols=stratify_cols,
         #     random_state=None,
         # )
-        train = load_nba(path="data/nba/nba_train.csv")
-        val = load_nba(path="data/nba/nba_test.csv")
+        train = load_nba(path="data/nba/example.csv")
+        val = load_nba(path="data/nba/example.csv")
         test = val
         self.loss = loss
         if loss in ["mtl", "bet"]:

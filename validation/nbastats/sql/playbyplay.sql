@@ -55,5 +55,4 @@ FROM Proc_NBAStats_PlayByPlay play
             GameType
         FROM Proc_NBAStats_Games
     ) game ON play.GameId = game.GameId
-WHERE Season > 2006
-    AND play.GameId BETWEEN 21900001 AND 21900011;
+WHERE Season > 2006;
