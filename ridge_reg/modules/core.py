@@ -18,7 +18,7 @@ from utils import load_nba, train_val_test_split
 
 class NBADataset(Dataset):
     """
-    NBA NW Data
+    NBA processed data
     """
 
     def __init__(self, df):
@@ -26,13 +26,13 @@ class NBADataset(Dataset):
         # print(self.df.dtypes)
         self.idx = df.index
         x_cols = [
-            ["HomeAway", "ScoreDiff"],
+            ["HomeOff", "ScoreMargin"],
             ["OffTeam"],
             ["DefTeam"],
             ["P1", "P2", "P3", "P4", "P5"],
-            ["age1", "age2", "age3", "age4", "age5"],
+            ["Age1", "Age2", "Age3", "Age4", "Age5"],
             ["P6", "P7", "P8", "P9", "P10"],
-            ["age6", "age7", "age8", "age9", "age10"],
+            ["Age6", "Age7", "Age8", "Age9", "Age10"],
         ]
         y_cols = ["y"]
         self.x = [self.pd_to_tensor(self.df[col]) for col in x_cols]
@@ -148,7 +148,18 @@ class NBADataModule(pl.LightningDataModule):
         self.num_workders = num_workders
         self.batch_size = batch_size
         stratify_cols = ["OffTeam", "DefTeam"]
-        float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
+        float_cols = ["y", "HomeOff", "ScoreMargin"] + [
+            "Age1",
+            "Age2",
+            "Age3",
+            "Age4",
+            "Age5",
+            "Age6",
+            "Age7",
+            "Age8",
+            "Age9",
+            "Age10",
+        ]
         # int_cols = stratify_cols + [f"P{x}" for x in range(1, 11)]
         type_dict = {key: np.float32 for key in float_cols}
         # type_dict.update({key: np.int16 for key in int_cols})
@@ -162,8 +173,8 @@ class NBADataModule(pl.LightningDataModule):
         #     stratify_cols=stratify_cols,
         #     random_state=None,
         # )
-        train = load_nba(path="data/nba/example.csv")
-        val = load_nba(path="data/nba/example.csv")
+        train = load_nba(path="data/nba/example_train.csv")
+        val = load_nba(path="data/nba/example_test.csv")
         test = val
         self.loss = loss
         if loss in ["mtl", "bet"]:

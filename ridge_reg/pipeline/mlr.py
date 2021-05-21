@@ -10,4 +10,3 @@ engine = sqlalchemy.create_engine(
 
 sqls = parse_sql("sql/sportradar.sql")
 df = pd.read_sql(sqls["sportradar"], engine)
-

@@ -166,6 +166,7 @@ def zq_pipeline():
 
 if __name__ == "__main__":
     df = zq_pipeline()
-    wr.s3.to_parquet(
-        df=df, path=S3_FOLDER + "zq_play", dataset=True, mode="overwrite"
-    )
+    print(df.head())
+    # wr.s3.to_parquet(
+    #     df=df, path=S3_FOLDER + "zq_play", dataset=True, mode="overwrite"
+    # )

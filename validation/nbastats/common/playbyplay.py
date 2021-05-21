@@ -106,7 +106,8 @@ def preprocess_play(df):
     """preprocess play"""
 
     # important
-    df = df.sort_values(["GameId", "PlayNum"], ascending=True).reset_index(drop=True)
+    # df = df.sort_values(["GameId", "PlayNum"], ascending=True).reset_index(drop=True)
+    df = df.reset_index(drop=True)
 
     # home/away to off/def
     df["OffensiveTeamId"] = np.select(
@@ -124,9 +125,9 @@ def preprocess_play(df):
     )
 
     # TODO: detect errors, pandera
-    # df.loc[(df["HomePts"] < 0) | (df["AwayPts"] < 0), ["HomePts", "AwayPts"]] = 0
-    # assert (df["HomePts"] >= 0).all()
-    # assert (df["AwayPts"] >= 0).all()
+    df.loc[(df["HomePts"] < 0) | (df["AwayPts"] < 0), ["HomePts", "AwayPts"]] = 0
+    assert (df["HomePts"] >= 0).all()
+    assert (df["AwayPts"] >= 0).all()
 
     # TODO: solve data issue
     df["ScoreMargin"] = df["HomeScore"] - df["AwayScore"]
@@ -136,7 +137,7 @@ def preprocess_play(df):
     # assert df["PossCount"].notna().all()
 
     # # remove plays without off team
-    # df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
+    df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
 
     # df = df.loc[(df["HomeNumPlayers"] == 5) & (df["AwayNumPlayers"] == 5)]
 
@@ -250,12 +251,14 @@ def encode_play_event(df):
 def collapse_plays(df, level="possession"):
     """collapse play level"""
     # check homeoff consistency
-    collapsed = df[
+    collapsed = df.loc[
+        :,
         [
             "HomePts",
             "AwayPts",
             "HomeFouls",
             "AwayFouls",
+            # "ScoreMargin",
             "SecRemainGame",
             "SecSinceLastPlay",
             "GameId",
@@ -263,6 +266,8 @@ def collapse_plays(df, level="possession"):
             "Period",
             "Season",
             "PossCount",
+            "StartEvent",
+            "EndEvent",
             "GameDate",
             "GameType",
             "ShotDistance",
@@ -272,54 +277,39 @@ def collapse_plays(df, level="possession"):
             "PlayNum",
             "HomeScore",
             "AwayScore",
-        ]
+        ],
     ]
-    if level == "possession":
-        result = collapsed.groupby(["GameId", "PossCount"]).agg(
-            Season=("Season", "first"),
-            GameDate=("GameDate", "first"),
-            GameType=("GameType", "first"),
-            OffTeam=("OffensiveTeamId", "first"),
-            DefTeam=("DefensiveTeamId", "first"),
-            Period=("Period", "first"),
-            HomeOff=("HomeOff", "first"),
-            SecRemainGame=("SecRemainGame", "max"),
-            StartPlayNum=("PlayNum", "min"),
-            HomeScore=("HomeScore", "max"),
-            AwayScore=("AwayScore", "max"),
-            HomePts=("HomePts", "sum"),
-            AwayPts=("AwayPts", "sum"),
-            Duration=("SecSinceLastPlay", "sum"),
-            ShotDistance=("ShotDistance", "mean"),
-            ShotAngle=("ShotAngle", "mean"),
-        )
-    elif level == "chance":
-        collapsed["ChanceCount"] = np.where(collapsed["StarEvent"] == "Oreb", 1, 0)
-        collapsed["ChanceCount"] = (
+    if level == "chance":
+        collapsed["ChanceCount"] = np.where(collapsed["StartEvent"] == "Oreb", 1, 0)
+        collapsed["PossCount"] = (
             collapsed.groupby("GameId")["ChanceCount"].cumsum() + collapsed["PossCount"]
         )
-        result = collapsed.groupby(["GameId", "ChanceCount"]).agg(
-            Season=("Season", "first"),
-            GameDate=("GameDate", "first"),
-            GameType=("GameType", "first"),
-            OffTeam=("OffensiveTeamId", "first"),
-            DefTeam=("DefensiveTeamId", "first"),
-            Period=("Period", "first"),
-            HomeOff=("HomeOff", "first"),
-            SecRemainGame=("SecRemainGame", "max"),
-            StartPlayNum=("PlayNum", "min"),
-            # PlayNum_max=("PlayNum", "max"),
-            HomeScore=("HomeScore", "max"),
-            AwayScore=("AwayScore", "max"),
-            HomePts=("HomePts", "sum"),
-            AwayPts=("AwayPts", "sum"),
-            Duration=("SecSinceLastPlay", "sum"),
-            ShotDistance=("ShotDistance", "mean"),
-            ShotAngle=("ShotAngle", "mean"),
-        )
-    else:
+        # collapsed = collapsed.drop(columns="PossCount").rename(
+        #     columns={"ChanceCount": "PossCount"}
+        # )
+    elif level != "possession":
         raise ValueError(f"level must be possession or chance, but get {level}.")
-
+    result = collapsed.groupby(["GameId", "PossCount"]).agg(
+        Season=("Season", "first"),
+        GameDate=("GameDate", "first"),
+        GameType=("GameType", "first"),
+        OffTeam=("OffensiveTeamId", "first"),
+        DefTeam=("DefensiveTeamId", "first"),
+        # ScoreMargin=("ScoreMargin", "first"),
+        Period=("Period", "first"),
+        HomeOff=("HomeOff", "first"),
+        SecRemainGame=("SecRemainGame", "max"),
+        StartPlayNum=("PlayNum", "min"),
+        StartEvent=("StartEvent", "first"),
+        EndEvent=("EndEvent", "last"),
+        HomeScore=("HomeScore", "max"),
+        AwayScore=("AwayScore", "max"),
+        HomePts=("HomePts", "sum"),
+        AwayPts=("AwayPts", "sum"),
+        Duration=("SecSinceLastPlay", "sum"),
+        ShotDistance=("ShotDistance", "mean"),
+        ShotAngle=("ShotAngle", "mean"),
+    )
     # TODO: use original scoremargin
     result["ScoreMargin"] = (
         result["HomeScore"]
@@ -340,12 +330,12 @@ def collapse_plays(df, level="possession"):
 #     return pd.read_sql(parse_sql(SQL_PATH[name], False), engine)
 
 
-def common_play(play):
+def common_play(play, level="possession"):
     """ common processing for play"""
     # play = load_data("play")
     df = preprocess_play(play)
     # df = filter_regular_plays(df)
-    return df, collapse_plays(df)
+    return df, collapse_plays(df, level=level)
 
 
 if __name__ == "__main__":

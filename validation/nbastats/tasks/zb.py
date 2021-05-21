@@ -100,6 +100,7 @@ def usage_player_id(df, collapsed):
                 "OffTeam",
                 "DefTeam",
                 "HomeOff",
+                "ScoreMargin",
                 "Duration",
                 "HomePts",
                 "AwayPts",
@@ -168,7 +169,7 @@ def categorical_encoding(df, from_s3=False):
     return df
 
 
-def zb_pipeline():
+def zb_pipeline(level="possession"):
     """data processing"""
 
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
@@ -176,20 +177,20 @@ def zb_pipeline():
     # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
     player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
-    play, possession = common_play(play)
-    possession = usage_player_id(play, possession)
-    result = zb_summarise(possession, player)
+    play, collapsed = common_play(play, level=level)
+    collapsed = usage_player_id(play, collapsed)
+    result = zb_summarise(collapsed, player)
     return categorical_encoding(result, from_s3=True)
 
 
 if __name__ == "__main__":
-    df = zb_pipeline()
-    # wr.s3.to_parquet(
-    #     df=df,
-    #     path=S3_FOLDER + "zb_play",
-    #     dataset=True,
-    #     mode="overwrite",
-    #     # table="proc_play",
-    #     # database="nbastats",
-    # )
+    df = zb_pipeline(level="chance")
+    wr.s3.to_parquet(
+        df=df,
+        path=S3_FOLDER + "zb_play_example",
+        dataset=True,
+        mode="overwrite",
+        # table="proc_play",
+        # database="nbastats",
+    )
     print("Uploaded parquet file to S3.")

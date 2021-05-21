@@ -6,6 +6,7 @@ from bla_python_db_utilities import auth
 import numpy as np
 import pandas as pd
 import torch
+import awswrangler as wr
 from scipy.sparse import csc_matrix
 from sklearn.model_selection import train_test_split
 
@@ -45,8 +46,17 @@ def load_nba(
     """
     load nba data
     """
-    float_cols = ["y", "y_exp", "HomeAway", "ScoreDiff"] + [
-        f"age{x}" for x in range(1, 11)
+    float_cols = ["y", "y_exp", "HomeOff", "ScoreMargin"] + [
+        "Age1",
+        "Age2",
+        "Age3",
+        "Age4",
+        "Age5",
+        "Age6",
+        "Age7",
+        "Age8",
+        "Age9",
+        "Age10",
     ]
     type_dict = {key: np.float32 for key in float_cols}
     df = pd.read_csv(os.path.join(root_dir, path), dtype=type_dict, index_col=False)
@@ -92,13 +102,13 @@ def transform_to_array(df, to_tensor=True):
     """
     df = df.reset_index(drop=True)
     x_cols = [
-        ["HomeAway", "ScoreDiff"],
+        ["HomeOff", "ScoreMargin"],
         ["OffTeam"],
         ["DefTeam"],
         ["P1", "P2", "P3", "P4", "P5"],
-        ["age1", "age2", "age3", "age4", "age5"],
+        ["Age1", "Age2", "Age3", "Age4", "Age5"],
         ["P6", "P7", "P8", "P9", "P10"],
-        ["age6", "age7", "age8", "age9", "age10"],
+        ["Age6", "Age7", "Age8", "Age9", "Age10"],
     ]
     y_cols = ["y"]
     x = [df[col].values for col in x_cols]
@@ -133,9 +143,7 @@ ENGINE_CONFIG = auth.load_url_dict(
 )
 
 SQL_DIR = "sql"
-SQL_PATH = {
-    "sportradar": "sportradar.sql"
-}
+SQL_PATH = {"sportradar": "sportradar.sql"}
 SQL_PATH = {key: SQL_DIR + "/" + value for key, value in SQL_PATH.items()}
 
 S3_BUCKET = "bla-basketball-models"
@@ -146,3 +154,29 @@ MODEL_URL = "NBA/zqin-models/models"
 DATALOADER_URL = "NBA/zqin-models/dataloaders"
 
 LOG_DIR = "nba/.tensorboard_logs"
+
+
+def down_load_s3_data():
+    """download data from s3"""
+    df = wr.s3.read_parquet("s3://bla-basketball-models/processing/zb_play")
+    df = df.astype(
+        {
+            x: "int"
+            for x in [
+                "P1",
+                "P2",
+                "P3",
+                "P4",
+                "P5",
+                "P6",
+                "P7",
+                "P8",
+                "P9",
+                "P10",
+                "OffTeam",
+                "DefTeam",
+                "UsageId",
+            ]
+        }
+    )
+    return df

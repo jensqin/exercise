@@ -378,7 +378,7 @@ if __name__ == "__main__":
     # train_loader = datam.train_dataloader()
     # tmp = iter(train_loader)
 
-    # float_cols = ["y", "HomeAway", "ScoreDiff"] + [f"age{x}" for x in range(1, 11)]
+    # float_cols = ["y", "HomeOff", "ScoreMargin"] + [f"age{x}" for x in range(1, 11)]
     # type_dict = {key: np.float32 for key in float_cols}
     # dfset = NBADataset(pd.read_csv("data/nba_nw.csv", dtype=type_dict))
     # loader = DataLoader(dfset, batch_size=32)

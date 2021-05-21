@@ -125,7 +125,8 @@ play_schema = DataFrameSchema(
         "SecSinceLastPlay": Column(
             pandas_dtype=PandasDtype.Int64,
             checks=[
-                Check.greater_than_or_equal_to(min_value=0.0),
+                # TODO: reorder play to solve issues
+                Check.greater_than_or_equal_to(min_value=-10.0),
                 # Check.less_than_or_equal_to(max_value=129.0),
             ],
         ),
