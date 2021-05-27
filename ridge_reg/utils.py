@@ -12,6 +12,9 @@ from sklearn.model_selection import train_test_split
 
 root_dir = "~/repository/exercise/ridge_reg"
 
+S3_INPUT_FOLDER = "s3://bla-basketball-models/processing/"
+S3_OUTPUT_FOLDER = "s3://bla-basketball-models/processing/"
+
 
 def train_val_test_split(
     df, val=0.15, test=0.1, shuffle=True, stratify_cols=None, random_state=None
@@ -37,7 +40,7 @@ def train_val_test_split(
 
 
 def load_nba(
-    path="data/nba_2018/nba_2018.csv",
+    path=S3_INPUT_FOLDER + "zb_possession",
     split_mode=None,
     test=0.1,
     val=0.15,
@@ -46,7 +49,7 @@ def load_nba(
     """
     load nba data
     """
-    float_cols = ["y", "y_exp", "HomeOff", "ScoreMargin"] + [
+    float_cols = ["Pts", "HomeOff", "ScoreMargin"] + [
         "Age1",
         "Age2",
         "Age3",
@@ -59,7 +62,8 @@ def load_nba(
         "Age10",
     ]
     type_dict = {key: np.float32 for key in float_cols}
-    df = pd.read_csv(os.path.join(root_dir, path), dtype=type_dict, index_col=False)
+    # path = os.path.join(root_dir, path)
+    df = pd.read_csv(path, dtype=type_dict, index_col=False)
     stratify_cols = ["OffTeam", "DefTeam"]
     if split_mode is None:
         if to_tensor:
@@ -156,7 +160,7 @@ DATALOADER_URL = "NBA/zqin-models/dataloaders"
 LOG_DIR = "nba/.tensorboard_logs"
 
 
-def down_load_s3_data():
+def download_s3_data():
     """download data from s3"""
     df = wr.s3.read_parquet("s3://bla-basketball-models/processing/zb_play")
     df = df.astype(

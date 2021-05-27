@@ -136,10 +136,10 @@ class NBADataModule(pl.LightningDataModule):
     def __init__(
         self,
         # data_path="data/nba_nw.csv",
+        train,
+        test,
         num_workders=1,
         batch_size=32,
-        val_size=0.15,
-        test_size=0.1,
         loss="mse",
         **kwargs,
     ):
@@ -147,35 +147,10 @@ class NBADataModule(pl.LightningDataModule):
         # self.data_path = os.path.join(os.getcwd(), data_path)
         self.num_workders = num_workders
         self.batch_size = batch_size
-        stratify_cols = ["OffTeam", "DefTeam"]
-        float_cols = ["y", "HomeOff", "ScoreMargin"] + [
-            "Age1",
-            "Age2",
-            "Age3",
-            "Age4",
-            "Age5",
-            "Age6",
-            "Age7",
-            "Age8",
-            "Age9",
-            "Age10",
-        ]
-        # int_cols = stratify_cols + [f"P{x}" for x in range(1, 11)]
-        type_dict = {key: np.float32 for key in float_cols}
-        # type_dict.update({key: np.int16 for key in int_cols})
-        # type_dict.update({"y": np.int32})
-        # self.nba = pd.read_csv(data_path, dtype=type_dict)
-        # train, val, test = train_val_test_split(
-        #     self.nba,
-        #     val=val_size,
-        #     test=test_size,
-        #     shuffle=True,
-        #     stratify_cols=stratify_cols,
-        #     random_state=None,
-        # )
-        train = load_nba(path="data/nba/example_train.csv")
-        val = load_nba(path="data/nba/example_test.csv")
-        test = val
+        # train = load_nba(path="data/nba/example_train.csv")
+        # val = load_nba(path="data/nba/example_test.csv")
+        # test = val
+        val = test
         self.loss = loss
         if loss in ["mtl", "bet"]:
             self.train = NBABetDataset(train)

@@ -47,7 +47,7 @@ SELECT play.GameId,
     ShotDistance,
     ShotAngle
 FROM Proc_NBAStats_PlayByPlay play
-    JOIN Proc_Shots shot ON play.GameId = shot.GameId
+    LEFT JOIN Proc_Shots shot ON play.GameId = shot.GameId
     AND play.EventNum = shot.Eventnum
     JOIN (
         SELECT GameId,
@@ -56,7 +56,6 @@ FROM Proc_NBAStats_PlayByPlay play
         FROM Proc_NBAStats_Games
     ) game ON play.GameId = game.GameId
 WHERE Season > 2006
-    AND play.GameId BETWEEN 21900001 AND 21900011
 ORDER BY GameDate,
     GameId,
     PlayNum;

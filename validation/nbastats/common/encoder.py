@@ -17,6 +17,7 @@ def encoder_from_s3(name):
     elif name == "event":
         event_map = wr.s3.read_csv(S3_FOLDER + "encoders/event_map_all.csv")
         encoder = OneHotEncoder()
+        # encoder = OneHotEncoder([event_map["events"].tolist()])
         encoder.fit(event_map[["events"]])
     else:
         raise ValueError(f"{name} encoder does not exist.")

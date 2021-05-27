@@ -12,7 +12,13 @@ sys.path.append("./")
 
 from settings import ENGINE_CONFIG, SQL_PATH, S3_FOLDER
 from nbastats.common.encoder import encoder_from_s3
-from nbastats.common.playbyplay import column_list, common_play
+from nbastats.common.playbyplay import (
+    column_list,
+    player_homeaway_to_offdef,
+    preprocess_play,
+    collapse_plays,
+    add_dob,
+)
 
 
 def usage_player_id(df, collapsed):
@@ -67,15 +73,20 @@ def usage_player_id(df, collapsed):
         .groupby(["GameId", "PossCount"])["UsageId"]
         .transform("last")
     )
-    df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
-        df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
-    ].values
-    df.loc[df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")] = df.loc[
-        df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
-    ].values
-    df[column_list("off_id") + column_list("def_id")] = df[
-        column_list("off_id") + column_list("def_id")
-    ].astype("int")
+
+    df = player_homeaway_to_offdef(df)
+    collapsed = player_homeaway_to_offdef(collapsed)
+
+    # homeaway to offdef
+    # df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
+    #     df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
+    # ].values
+    # df.loc[df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")] = df.loc[
+    #     df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
+    # ].values
+    # df[column_list("off_id") + column_list("def_id")] = df[
+    #     column_list("off_id") + column_list("def_id")
+    # ].astype("int")
     # df[column_names("off_id") + column_names("def_id")] = np.where(
     #     df["HomeOff"] == 1,
     #     df[column_names("home_id") + column_names("away_id")].values,
@@ -89,63 +100,59 @@ def usage_player_id(df, collapsed):
     poss_usg = df.loc[
         df["UsageId"].notna(), ["GameId", "PossCount", "UsageId"]
     ].drop_duplicates()
-
-    result = pd.merge(
-        collapsed[
-            [
-                "GameId",
-                "PossCount",
-                "GameDate",
-                "GameType",
-                "OffTeam",
-                "DefTeam",
-                "HomeOff",
-                "ScoreMargin",
-                "Duration",
-                "HomePts",
-                "AwayPts",
-                "ShotDistance",
-                "ShotAngle",
-            ]
-        ],
-        df[
-            ["GameId", "PossCount"] + column_list("off_id") + column_list("def_id")
-        ].drop_duplicates(),
-        on=["GameId", "PossCount"],
-        how="left",
+    assert len(poss_usg.index) == len(
+        poss_usg[["GameId", "PossCount"]].drop_duplicates().index
     )
-    return pd.merge(result, poss_usg, on=["GameId", "PossCount"], how="left")
+
+    # result = pd.merge(
+    #     collapsed[
+    #         [
+    #             "GameId",
+    #             "PossCount",
+    #             "GameDate",
+    #             "GameType",
+    #             "OffTeam",
+    #             "DefTeam",
+    #             "HomeOff",
+    #             "ScoreMargin",
+    #             "Duration",
+    #             "HomePts",
+    #             "AwayPts",
+    #             "ShotDistance",
+    #             "ShotAngle",
+    #         ]
+    #     ],
+    #     df[
+    #         ["GameId", "PossCount"] + column_list("off_id") + column_list("def_id")
+    #     ].drop_duplicates(),
+    #     on=["GameId", "PossCount"],
+    #     how="left",
+    # )
+    result = pd.merge(collapsed, poss_usg, on=["GameId", "PossCount"], how="left")
+
+    # TODO: apply PFoul split to substitutes in possessions
+    # 0.9957044673539519
+    # print(
+    #     result[column_list("off_id")]
+    #     .apply(lambda t: (result["UsageId"] == t) | result["UsageId"].isna())
+    #     .any(axis=1)
+    #     .mean()
+    # )
+    result = result[
+        result[column_list("off_id")]
+        .apply(lambda t: (result["UsageId"] == t) | result["UsageId"].isna())
+        .any(axis=1)
+    ]
+    assert (
+        result[column_list("off_id")]
+        .apply(lambda t: (result["UsageId"] == t) | result["UsageId"].isna())
+        .any(axis=1)
+        .all()
+    ), "UsageId not in offensive Ids."
+    return result
 
 
-def zb_summarise(df, player):
-    df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
-    df = df.rename(
-        columns=dict(
-            zip(
-                column_list("off_id") + column_list("def_id"),
-                column_list("off_id_abbr") + column_list("def_id_abbr"),
-            )
-        )
-    )
-    # df["TimeRemain"] = df["SecRemainGame"]
-
-    # df.loc[df["Pts"] > 3, "Pts"] = 3
-    birth_dates = player[["PlayerId", "Dob"]]
-    for nth in range(1, 11):
-        df = pd.merge(
-            df,
-            birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
-            on=f"P{nth}",
-            how="left",
-        )
-
-    df[column_list("age")] = df[column_list("age")].apply(
-        lambda s: (df["GameDate"] - s).dt.days / 365.25
-    )
-    return df
-
-
-def categorical_encoding(df, from_s3=False):
+def zb_categorical_encoding(df, from_s3=False):
     """encode categorical variables"""
     player_id_cols = column_list("off_id_abbr") + column_list("def_id_abbr")
     if from_s3:
@@ -169,6 +176,55 @@ def categorical_encoding(df, from_s3=False):
     return df
 
 
+def zb_output(df):
+    """zb output"""
+    col_dict = {
+        "GameId": "int32",
+        "PossCount": "float32",
+        "Season": "int32",
+        "GameDate": "datetime64",
+        "GameType": "int32",
+        "OffTeam": "float32",
+        "DefTeam": "float32",
+        "Period": "int32",
+        "HomeOff": "float32",
+        "SecRemainGame": "int32",
+        "StartEvent": "str",
+        "EndEvent": "str",
+        "HomeScore": "int32",
+        "AwayScore": "int32",
+        "HomePts": "float32",
+        "AwayPts": "float32",
+        "UsageId": "float32",
+        "Pts": "float32",
+        "Duration": "int32",
+        "ShotDistance": "float32",
+        "ShotAngle": "float32",
+        "ScoreMargin": "float32",
+        "P1": "float32",
+        "P2": "float32",
+        "P3": "float32",
+        "P4": "float32",
+        "P5": "float32",
+        "P6": "float32",
+        "P7": "float32",
+        "P8": "float32",
+        "P9": "float32",
+        "P10": "float32",
+        "Age1": "float32",
+        "Age2": "float32",
+        "Age3": "float32",
+        "Age4": "float32",
+        "Age5": "float32",
+        "Age6": "float32",
+        "Age7": "float32",
+        "Age8": "float32",
+        "Age9": "float32",
+        "Age10": "float32",
+    }
+    return df[col_dict.keys()].astype(col_dict)
+
+
 def zb_pipeline(level="possession"):
     """data processing"""
 
@@ -177,17 +233,19 @@ def zb_pipeline(level="possession"):
     # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
     player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
-    play, collapsed = common_play(play, level=level)
+    play = preprocess_play(play)
+    collapsed = collapse_plays(play, level=level)
     collapsed = usage_player_id(play, collapsed)
-    result = zb_summarise(collapsed, player)
-    return categorical_encoding(result, from_s3=True)
+    result = add_dob(collapsed, player)
+    result = zb_categorical_encoding(result, from_s3=True)
+    return zb_output(result)
 
 
 if __name__ == "__main__":
-    df = zb_pipeline(level="chance")
+    df = zb_pipeline(level="possession")
     wr.s3.to_parquet(
         df=df,
-        path=S3_FOLDER + "zb_play_example",
+        path=S3_FOLDER + "zb_possession",
         dataset=True,
         mode="overwrite",
         # table="proc_play",

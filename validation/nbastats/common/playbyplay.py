@@ -1,9 +1,11 @@
+from nbastats.common.encoder import encoder_from_s3
 import os
 import numpy as np
 from numpy.lib.npyio import load
 import pandas as pd
 import pandera as pa
 from pandera.typing import DataFrame
+from sklearn.preprocessing import OneHotEncoder
 import sqlalchemy
 
 from bla_python_db_utilities.parser import parse_sql
@@ -175,7 +177,7 @@ def aggregation_to_game_level(play, game):
     final_scores = (
         play.groupby("GameId")[["HomeScore", "AwayScore"]]
         .agg(["max", "last"])
-        .reset_index()
+        .reset_index(drop=True)
     )
 
     # score of last play equals max score
@@ -192,6 +194,20 @@ def aggregation_to_game_level(play, game):
     return pd.merge(
         final_scores, game[["GameId", "HomeFinalScore", "AwayFinalScore"]], on="GameId",
     )
+
+
+def player_homeaway_to_offdef(df):
+    """player homeaway to offdef"""
+    df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
+        df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
+    ].values
+    df.loc[df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")] = df.loc[
+        df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
+    ].values
+    df[column_list("off_id") + column_list("def_id")] = df[
+        column_list("off_id") + column_list("def_id")
+    ].astype("int")
+    return df
 
 
 # def filter_regular_plays(df):
@@ -238,47 +254,79 @@ def players_of_possession(df):
     )
 
 
-def encode_play_event(df):
+def encode_player_event(df, from_s3=False):
     """get unique play event"""
-    events = pd.unique(df[column_list("event")].values.ravel())
-    events_series = pd.Series(range(len(events)), events)
-    df[column_list("event")] = df[column_list("event")].apply(
-        lambda x: events_series[x]
-    )
-    return df
+    # events = pd.unique(df[column_list("event")].values.ravel())
+    # events_series = pd.Series(range(len(events)), events)
+    # df[column_list("event")] = df[column_list("event")].apply(
+    #     lambda x: events_series[x]
+    # )
+    df[column_list("event")] = df[column_list("event")].replace({None: np.nan})
+    event_encoder = encoder_from_s3("event")
+    for event_col in column_list("event"):
+        df[event_encoder.get_feature_names([event_col])] = event_encoder.transform(
+            df[[event_col]]
+        ).toarray()
+    return df.loc[:, ~df.columns.str.endswith("_nan")]
 
 
-def collapse_plays(df, level="possession"):
+def collapse_plays(df, level="possession", event=False):
     """collapse play level"""
     # check homeoff consistency
-    collapsed = df.loc[
-        :,
-        [
-            "HomePts",
-            "AwayPts",
-            "HomeFouls",
-            "AwayFouls",
-            # "ScoreMargin",
-            "SecRemainGame",
-            "SecSinceLastPlay",
-            "GameId",
-            "HomeOff",
-            "Period",
-            "Season",
-            "PossCount",
-            "StartEvent",
-            "EndEvent",
-            "GameDate",
-            "GameType",
-            "ShotDistance",
-            "ShotAngle",
-            "OffensiveTeamId",
-            "DefensiveTeamId",
-            "PlayNum",
-            "HomeScore",
-            "AwayScore",
-        ],
-    ]
+
+    collapsed_cols = [
+        "HomePts",
+        "AwayPts",
+        "HomeFouls",
+        "AwayFouls",
+        # "ScoreMargin",
+        "SecRemainGame",
+        "SecSinceLastPlay",
+        "GameId",
+        "HomeOff",
+        "Period",
+        "Season",
+        "PossCount",
+        "StartEvent",
+        "EndEvent",
+        "GameDate",
+        "GameType",
+        "ShotDistance",
+        "ShotAngle",
+        "OffensiveTeamId",
+        "DefensiveTeamId",
+        "PlayNum",
+        "HomeScore",
+        "AwayScore",
+    ] + column_list("id")
+    agg_dict = {
+        "Season": ("Season", "first"),
+        "GameDate": ("GameDate", "first"),
+        "GameType": ("GameType", "first"),
+        "OffTeam": ("OffensiveTeamId", "first"),
+        "DefTeam": ("DefensiveTeamId", "first"),
+        # ScoreMargin:("ScoreMargin", "first"),
+        "Period": ("Period", "first"),
+        "HomeOff": ("HomeOff", "first"),
+        "SecRemainGame": ("SecRemainGame", "max"),
+        "StartPlayNum": ("PlayNum", "min"),
+        "StartEvent": ("StartEvent", "first"),
+        "EndEvent": ("EndEvent", "last"),
+        "HomeScore": ("HomeScore", "max"),
+        "AwayScore": ("AwayScore", "max"),
+        "HomePts": ("HomePts", "sum"),
+        "AwayPts": ("AwayPts", "sum"),
+        "Duration": ("SecSinceLastPlay", "sum"),
+        "ShotDistance": ("ShotDistance", "mean"),
+        "ShotAngle": ("ShotAngle", "mean"),
+    }
+
+    if event:
+        event_cols = df.columns[df.columns.str.contains("Event_")].tolist()
+        collapsed_cols += event_cols
+        agg_dict.update({col: (col, "sum") for col in event_cols})
+
+    collapsed = df.loc[:, collapsed_cols]
     if level == "chance":
         collapsed["ChanceCount"] = np.where(collapsed["StartEvent"] == "Oreb", 1, 0)
         collapsed["PossCount"] = (
@@ -289,26 +337,20 @@ def collapse_plays(df, level="possession"):
         # )
     elif level != "possession":
         raise ValueError(f"level must be possession or chance, but get {level}.")
-    result = collapsed.groupby(["GameId", "PossCount"]).agg(
-        Season=("Season", "first"),
-        GameDate=("GameDate", "first"),
-        GameType=("GameType", "first"),
-        OffTeam=("OffensiveTeamId", "first"),
-        DefTeam=("DefensiveTeamId", "first"),
-        # ScoreMargin=("ScoreMargin", "first"),
-        Period=("Period", "first"),
-        HomeOff=("HomeOff", "first"),
-        SecRemainGame=("SecRemainGame", "max"),
-        StartPlayNum=("PlayNum", "min"),
-        StartEvent=("StartEvent", "first"),
-        EndEvent=("EndEvent", "last"),
-        HomeScore=("HomeScore", "max"),
-        AwayScore=("AwayScore", "max"),
-        HomePts=("HomePts", "sum"),
-        AwayPts=("AwayPts", "sum"),
-        Duration=("SecSinceLastPlay", "sum"),
-        ShotDistance=("ShotDistance", "mean"),
-        ShotAngle=("ShotAngle", "mean"),
+
+    collapsed["SecLineup"] = collapsed.groupby(
+        ["GameId", "PossCount"] + column_list("id")
+    )["SecSinceLastPlay"].transform("sum")
+
+    result = collapsed.groupby(["GameId", "PossCount"]).agg(**agg_dict)
+    players = collapsed.sort_values("SecLineup", ascending=False).drop_duplicates(
+        ["GameId", "PossCount"]
+    )
+    assert len(result.index) == len(players.index)
+    result = pd.merge(
+        result,
+        players[["GameId", "PossCount"] + column_list("id")],
+        on=["GameId", "PossCount"],
     )
     # TODO: use original scoremargin
     result["ScoreMargin"] = (
@@ -321,21 +363,41 @@ def collapse_plays(df, level="possession"):
     result["ScoreMargin"] = result["ScoreMargin"] * np.where(
         result["HomeOff"] == 1, 1, -1
     )
-    return result.reset_index()
+    return result.reset_index(drop=True)
 
 
-# def load_data(name):
-#     """data processing"""
-#     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
-#     return pd.read_sql(parse_sql(SQL_PATH[name], False), engine)
+def add_dob(df, player):
+    df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
+    df = df.rename(
+        columns=dict(
+            zip(
+                column_list("off_id") + column_list("def_id"),
+                column_list("off_id_abbr") + column_list("def_id_abbr"),
+            )
+        )
+    )
+    # df["TimeRemain"] = df["SecRemainGame"]
+
+    # df.loc[df["Pts"] > 3, "Pts"] = 3
+    birth_dates = player[["PlayerId", "Dob"]]
+    for nth in range(1, 11):
+        df = pd.merge(
+            df,
+            birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
+            on=f"P{nth}",
+            how="left",
+        )
+
+    df[column_list("age")] = df[column_list("age")].apply(
+        lambda s: (df["GameDate"] - s).dt.days / 365.25
+    )
+    return df
 
 
-def common_play(play, level="possession"):
-    """ common processing for play"""
-    # play = load_data("play")
-    df = preprocess_play(play)
-    # df = filter_regular_plays(df)
-    return df, collapse_plays(df, level=level)
+# def common_play(play, level="possession"):
+#     """ common processing for play"""
+#     df = preprocess_play(play)
+#     return df, collapse_plays(df, level=level)
 
 
 if __name__ == "__main__":

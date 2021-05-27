@@ -12,19 +12,26 @@ sys.path.append("./")
 from bla_python_db_utilities.parser import parse_sql
 from settings import ENGINE_CONFIG, SQL_PATH, S3_FOLDER
 from nbastats.common.encoder import encoder_from_s3
-from nbastats.common.playbyplay import column_list, common_play
+from nbastats.common.playbyplay import (
+    column_list,
+    encode_player_event,
+    collapse_plays,
+    preprocess_play,
+    add_dob,
+)
 
 
-def collapse_chance_level(df, level="chance"):
+def zq_collapse_plays(df, level="possession"):
     """collapse play level"""
     # check homeoff consistency
-    collapsed = df[
+    collapsed = df.loc[
+        :,
         [
-            "ScoreMargin",
             "HomePts",
             "AwayPts",
             "HomeFouls",
             "AwayFouls",
+            # "ScoreMargin",
             "SecRemainGame",
             "SecSinceLastPlay",
             "GameId",
@@ -32,50 +39,50 @@ def collapse_chance_level(df, level="chance"):
             "Period",
             "Season",
             "PossCount",
+            "StartEvent",
+            "EndEvent",
+            "GameDate",
+            "GameType",
+            "ShotDistance",
+            "ShotAngle",
             "OffensiveTeamId",
             "DefensiveTeamId",
             "PlayNum",
             "HomeScore",
             "AwayScore",
-        ]
+        ],
     ]
-    if level == "possession":
-        result = collapsed.groupby(["GameId", "PossCount"]).agg(
-            Season=("Season", "first"),
-            Period=("Period", "first"),
-            HomeOff=("HomeOff", "first"),
-            SecRemainGame=("SecRemainGame", "max"),
-            PlayNum_min=("PlayNum", "min"),
-            PlayNum_max=("PlayNum", "max"),
-            HomeScore=("HomeScore", "max"),
-            AwayScore=("AwayScore", "max"),
-            HomePts=("HomePts", "sum"),
-            AwayPts=("AwayPts", "sum"),
-            SecSinceLastPlay=("SecSinceLastPlay", "sum"),
-        )
-    elif level == "chance":
-        collapsed["ChanceCount"] = np.where(collapsed["StarEvent"] == "Oreb", 1, 0)
-        collapsed["ChanceCount"] = (
+    if level == "chance":
+        collapsed["ChanceCount"] = np.where(collapsed["StartEvent"] == "Oreb", 1, 0)
+        collapsed["PossCount"] = (
             collapsed.groupby("GameId")["ChanceCount"].cumsum() + collapsed["PossCount"]
         )
-        result = collapsed.groupby(["GameId", "ChanceCount"]).agg(
-            Season=("Season", "first"),
-            Period=("Period", "first"),
-            HomeOff=("HomeOff", "first"),
-            SecRemainGame=("SecRemainGame", "max"),
-            PlayNum_min=("PlayNum", "min"),
-            PlayNum_max=("PlayNum", "max"),
-            Eventnum_min=("Eventnum", "min"),
-            Eventnum_max=("Eventnum", "max"),
-            HomeScore=("HomeScore", "max"),
-            AwayScore=("AwayScore", "max"),
-            HomePts=("HomePts", "sum"),
-            AwayPts=("AwayPts", "sum"),
-            SecSinceLastPlay=("SecSinceLastPlay", "sum"),
-        )
-    else:
+        # collapsed = collapsed.drop(columns="PossCount").rename(
+        #     columns={"ChanceCount": "PossCount"}
+        # )
+    elif level != "possession":
         raise ValueError(f"level must be possession or chance, but get {level}.")
-
+    result = collapsed.groupby(["GameId", "PossCount"]).agg(
+        Season=("Season", "first"),
+        GameDate=("GameDate", "first"),
+        GameType=("GameType", "first"),
+        OffTeam=("OffensiveTeamId", "first"),
+        DefTeam=("DefensiveTeamId", "first"),
+        # ScoreMargin=("ScoreMargin", "first"),
+        Period=("Period", "first"),
+        HomeOff=("HomeOff", "first"),
+        SecRemainGame=("SecRemainGame", "max"),
+        StartPlayNum=("PlayNum", "min"),
+        StartEvent=("StartEvent", "first"),
+        EndEvent=("EndEvent", "last"),
+        HomeScore=("HomeScore", "max"),
+        AwayScore=("AwayScore", "max"),
+        HomePts=("HomePts", "sum"),
+        AwayPts=("AwayPts", "sum"),
+        Duration=("SecSinceLastPlay", "sum"),
+        ShotDistance=("ShotDistance", "mean"),
+        ShotAngle=("ShotAngle", "mean"),
+    )
     # TODO: use original scoremargin
     result["ScoreMargin"] = (
         result["HomeScore"]
@@ -83,13 +90,14 @@ def collapse_chance_level(df, level="chance"):
         - result["HomePts"]
         + result["AwayPts"]
     )
+    # result["ScoreMargin"] = result.groupby("GameId")["ScoreMargin"].shift(1).fillna(0)
     result["ScoreMargin"] = result["ScoreMargin"] * np.where(
         result["HomeOff"] == 1, 1, -1
     )
     return result.reset_index()
 
 
-def categorical_encoding(df, from_s3=True):
+def zq_categorical_encoding(df, from_s3=True):
     """get unique play event"""
     # events = pd.unique(df[column_names("event")].values.ravel())
     # events_series = pd.Series(range(len(events)), events)
@@ -113,45 +121,43 @@ def categorical_encoding(df, from_s3=True):
         df[team_col] = team_encoder.transform(df[[team_col]])
     for player_col in player_id_cols:
         df[player_col] = player_encoder.transform(df[[player_col]])
-    for event_col in column_list("event"):
-        df[event_encoder.get_feature_names([event_col])] = event_encoder.transform(
-            df[[event_col]]
-        )
-    # df["OffTeam"] = team_encoder.transform(df[["OffTeam"]])
-    # df[player_id_cols] = player_encoder.transform(df[player_id_cols])
+    # for event_col in column_list("event"):
+    #     df[event_encoder.get_feature_names([event_col])] = event_encoder.transform(
+    #         df[[event_col]]
+    #     )
     return df
 
 
-def summarise_data(df, player):
-    """summarize data frame"""
-    df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
-    df = df.rename(
-        columns=dict(
-            zip(
-                column_list("off_id") + column_list("def_id"),
-                column_list("off_id_abbr") + column_list("def_id_abbr"),
-            )
-        )
-    )
-    # df["TimeRemain"] = df["SecRemainGame"]
+# def add_dob(df, player):
+#     """summarize data frame"""
+#     df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
+#     player_abbr = column_list("off_id_abbr") + column_list("def_id_abbr")
+#     df = df.rename(
+#         columns=dict(zip(column_list("off_id") + column_list("def_id"), player_abbr,))
+#     )
+#     # df["TimeRemain"] = df["SecRemainGame"]
 
-    # df.loc[df["Pts"] > 3, "Pts"] = 3
-    birth_dates = player[["PlayerId", "Dob"]]
-    for nth in range(1, 11):
-        df = pd.merge(
-            df,
-            birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
-            on=f"P{nth}",
-            how="left",
-        )
+#     # df.loc[df["Pts"] > 3, "Pts"] = 3
+#     birth_dates = player[["PlayerId", "Dob"]]
+#     for nth in range(1, 11):
+#         df = pd.merge(
+#             df,
+#             birth_dates.rename(columns={"PlayerId": f"P{nth}", "Dob": f"Age{nth}"}),
+#             on=f"P{nth}",
+#             how="left",
+#         )
 
-    df[column_list("age")] = df[column_list("age")].apply(
-        lambda s: (df["GameDate"] - s).dt.days / 365.25
-    )
-    return df
+#     df[column_list("age")] = df[column_list("age")].apply(
+#         lambda s: (df["GameDate"] - s).dt.days / 365.25
+#     )
+#     return df
+
+def zq_output(df):
+    """summarise the data"""
+    pass
 
 
-def zq_pipeline():
+def zq_pipeline(level="possession"):
     """data processing"""
 
     engine = sqlalchemy.create_engine(ENGINE_CONFIG["DEV_NBA.url"])
@@ -159,9 +165,11 @@ def zq_pipeline():
     # game = pd.read_sql(parse_sql(SQL_PATH["game"], False), engine)
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
     player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
-    play, possession = common_play(play)
-    result = summarise_data(possession, player)
-    return categorical_encoding(result, from_s3=True)
+    play = preprocess_play(play)
+    play = encode_player_event(play)
+    collapsed = collapse_plays(play, level=level, event=True)
+    result = add_dob(collapsed, player)
+    return zq_categorical_encoding(result, from_s3=True)
 
 
 if __name__ == "__main__":
