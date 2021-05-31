@@ -69,22 +69,37 @@ def column_list(key):
             "AwayPlayer4Id",
             "AwayPlayer5Id",
         ],
-        "off_id": [
-            "OffPlayer1Id",
-            "OffPlayer2Id",
-            "OffPlayer3Id",
-            "OffPlayer4Id",
-            "OffPlayer5Id",
+        # "off_id": [
+        #     "OffPlayer1Id",
+        #     "OffPlayer2Id",
+        #     "OffPlayer3Id",
+        #     "OffPlayer4Id",
+        #     "OffPlayer5Id",
+        # ],
+        # "def_id": [
+        #     "DefPlayer1Id",
+        #     "DefPlayer2Id",
+        #     "DefPlayer3Id",
+        #     "DefPlayer4Id",
+        #     "DefPlayer5Id",
+        # ],
+        "off_event": ["P1E", "P2E", "P3E", "P4E", "P5E"],
+        "def_event": ["P6E", "P7E", "P8E", "P9E", "P10E"],
+        "offdef_event": [
+            "P1E",
+            "P2E",
+            "P3E",
+            "P4E",
+            "P5E",
+            "P6E",
+            "P7E",
+            "P8E",
+            "P9E",
+            "P10E",
         ],
-        "def_id": [
-            "DefPlayer1Id",
-            "DefPlayer2Id",
-            "DefPlayer3Id",
-            "DefPlayer4Id",
-            "DefPlayer5Id",
-        ],
-        "off_id_abbr": ["P1", "P2", "P3", "P4", "P5"],
-        "def_id_abbr": ["P6", "P7", "P8", "P9", "P10"],
+        "off_id": ["P1", "P2", "P3", "P4", "P5"],
+        "def_id": ["P6", "P7", "P8", "P9", "P10"],
+        "offdef_id": ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"],
         "off_age": ["Age1", "Age2", "Age3", "Age4", "Age5"],
         "def_age": ["Age6", "Age7", "Age8", "Age9", "Age10"],
         "age": [
@@ -103,23 +118,71 @@ def column_list(key):
     return name_dict[key]
 
 
+type_dict = {
+    "GameId": "int32",
+    "PossCount": "int32",
+    "Season": "int32",
+    "GameDate": "datetime64",
+    "GameType": "int32",
+    "OffTeam": "int32",
+    "DefTeam": "int32",
+    # "Period": "int32",
+    "HomeOff": "float32",
+    "SecRemainGame": "float32",
+    "StartEvent": "str",
+    "EndEvent": "str",
+    # "HomeScore": "int32",
+    # "AwayScore": "int32",
+    # "HomePts": "float32",
+    # "AwayPts": "float32",
+    # "UsageId": "int32",
+    "Pts": "float32",
+    "Duration": "int32",
+    "ShotDistance": "float32",
+    "ShotAngle": "float32",
+    "ScoreMargin": "float32",
+    "P1": "int32",
+    "P2": "int32",
+    "P3": "int32",
+    "P4": "int32",
+    "P5": "int32",
+    "P6": "int32",
+    "P7": "int32",
+    "P8": "int32",
+    "P9": "int32",
+    "P10": "int32",
+    "Age1": "float32",
+    "Age2": "float32",
+    "Age3": "float32",
+    "Age4": "float32",
+    "Age5": "float32",
+    "Age6": "float32",
+    "Age7": "float32",
+    "Age8": "float32",
+    "Age9": "float32",
+    "Age10": "float32",
+}
+
+
 @pa.check_input(play_schema)
 def preprocess_play(df):
     """preprocess play"""
 
     # important
     # df = df.sort_values(["GameId", "PlayNum"], ascending=True).reset_index(drop=True)
-    df = df.reset_index(drop=True)
+    df = df.sort_values(["GameDate", "GameId", "PlayNum"], ascending=True).reset_index(
+        drop=True
+    )
 
     # home/away to off/def
-    df["OffensiveTeamId"] = np.select(
-        [df["HomeOff"].isna(), df["HomeOff"] == 1, df["HomeOff"] == 0],
-        [None, df["HomeTeamId"], df["AwayTeamId"]],
-    )
-    df["DefensiveTeamId"] = np.select(
-        [df["HomeOff"].isna(), df["HomeOff"] == 1, df["HomeOff"] == 0],
-        [None, df["AwayTeamId"], df["HomeTeamId"]],
-    )
+    # df["OffensiveTeamId"] = np.select(
+    #     [df["HomeOff"].isna(), df["HomeOff"] == 1, df["HomeOff"] == 0],
+    #     [None, df["HomeTeamId"], df["AwayTeamId"]],
+    # )
+    # df["DefensiveTeamId"] = np.select(
+    #     [df["HomeOff"].isna(), df["HomeOff"] == 1, df["HomeOff"] == 0],
+    #     [None, df["AwayTeamId"], df["HomeTeamId"]],
+    # )
 
     # HomeScore/AwayScore not na
     df[["HomePts", "AwayPts"]] = (
@@ -139,7 +202,7 @@ def preprocess_play(df):
     # assert df["PossCount"].notna().all()
 
     # # remove plays without off team
-    df = df.loc[df["HomeOff"].isna() | df["EndEvent"] != "Timeout"]
+    # df = df.loc[df["HomeOff"].notna()]
 
     # df = df.loc[(df["HomeNumPlayers"] == 5) & (df["AwayNumPlayers"] == 5)]
 
@@ -166,7 +229,7 @@ def preprocess_play(df):
     df.loc[df["SecSinceLastPlay"] > 30, "SecSinceLastPlay"] = 30
     df.loc[df["SecSinceLastPlay"] < 0, "SecSinceLastPlay"] = 0
 
-    return df
+    return homeaway_to_offdef(df)
 
 
 # @pa.check_output(agg_schema)
@@ -196,18 +259,26 @@ def aggregation_to_game_level(play, game):
     )
 
 
-def player_homeaway_to_offdef(df):
+def homeaway_to_offdef(df):
     """player homeaway to offdef"""
+    df["OffTeam"] = np.where(df["HomeOff"] == 1, df["HomeTeamId"], df["AwayTeamId"])
+    df["DefTeam"] = np.where(df["HomeOff"] == 1, df["AwayTeamId"], df["HomeTeamId"])
     df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
-        df["HomeOff"] == 1, column_list("home_id") + column_list("away_id")
+        df["HomeOff"] == 1, column_list("id")
     ].values
-    df.loc[df["HomeOff"] == 0, column_list("off_id") + column_list("def_id")] = df.loc[
-        df["HomeOff"] == 0, column_list("away_id") + column_list("home_id")
+    df.loc[df["HomeOff"] == 0, column_list("def_id") + column_list("off_id")] = df.loc[
+        df["HomeOff"] == 0, column_list("id")
     ].values
-    df[column_list("off_id") + column_list("def_id")] = df[
-        column_list("off_id") + column_list("def_id")
-    ].astype("int")
-    return df
+    df.loc[
+        df["HomeOff"] == 1, column_list("off_event") + column_list("def_event")
+    ] = df.loc[df["HomeOff"] == 1, column_list("event")].values
+    df.loc[
+        df["HomeOff"] == 0, column_list("def_event") + column_list("off_event")
+    ] = df.loc[df["HomeOff"] == 0, column_list("event")].values
+    df[column_list("offdef_id")] = df[column_list("offdef_id")].astype("int")
+    return df.drop(
+        columns=["HomeTeamId", "AwayTeamId"] + column_list("id") + column_list("event")
+    )
 
 
 # def filter_regular_plays(df):
@@ -239,19 +310,19 @@ def player_homeaway_to_offdef(df):
 #     return df
 
 
-def players_of_possession(df):
-    """players who use most of the possession"""
-    df["SumSec"] = df.groupby(["GameId", "PossCount"] + column_list("id"))[
-        "SecSinceLastPlay"
-    ].transform(sum)
-    df_id = (
-        df.sort_values(["GameId", "PossCount", "SumSec"], ascending=[True, True, False])
-        .groupby(["GameId", "PossCount"])[column_list("id")]
-        .first()
-    )
-    return pd.merge(
-        df.drop(columns=column_list("id")), df_id, on=["GameId", "PossCount"]
-    )
+# def players_of_possession(df):
+#     """players who use most of the possession"""
+#     df["SumSec"] = df.groupby(["GameId", "PossCount"] + column_list("id"))[
+#         "SecSinceLastPlay"
+#     ].transform(sum)
+#     df_id = (
+#         df.sort_values(["GameId", "PossCount", "SumSec"], ascending=[True, True, False])
+#         .groupby(["GameId", "PossCount"])[column_list("id")]
+#         .first()
+#     )
+#     return pd.merge(
+#         df.drop(columns=column_list("id")), df_id, on=["GameId", "PossCount"]
+#     )
 
 
 def encode_player_event(df, from_s3=False):
@@ -261,9 +332,14 @@ def encode_player_event(df, from_s3=False):
     # df[column_list("event")] = df[column_list("event")].apply(
     #     lambda x: events_series[x]
     # )
-    df[column_list("event")] = df[column_list("event")].replace({None: np.nan})
-    event_encoder = encoder_from_s3("event")
-    for event_col in column_list("event"):
+    df[column_list("offdef_event")] = df[column_list("offdef_event")].replace(
+        {None: np.nan}
+    )
+    if from_s3:
+        event_encoder = encoder_from_s3("event")
+    else:
+        raise NotImplementedError
+    for event_col in column_list("offdef_event"):
         df[event_encoder.get_feature_names([event_col])] = event_encoder.transform(
             df[[event_col]]
         ).toarray()
@@ -293,18 +369,18 @@ def collapse_plays(df, level="possession", event=False):
         "GameType",
         "ShotDistance",
         "ShotAngle",
-        "OffensiveTeamId",
-        "DefensiveTeamId",
+        "OffTeam",
+        "DefTeam",
         "PlayNum",
         "HomeScore",
         "AwayScore",
-    ] + column_list("id")
+    ] + column_list("offdef_id")
     agg_dict = {
         "Season": ("Season", "first"),
         "GameDate": ("GameDate", "first"),
         "GameType": ("GameType", "first"),
-        "OffTeam": ("OffensiveTeamId", "first"),
-        "DefTeam": ("DefensiveTeamId", "first"),
+        "OffTeam": ("OffTeam", "first"),
+        "DefTeam": ("DefTeam", "first"),
         # ScoreMargin:("ScoreMargin", "first"),
         "Period": ("Period", "first"),
         "HomeOff": ("HomeOff", "first"),
@@ -322,7 +398,7 @@ def collapse_plays(df, level="possession", event=False):
     }
 
     if event:
-        event_cols = df.columns[df.columns.str.contains("Event_")].tolist()
+        event_cols = df.filter(regex="P\d+E_.*").columns.tolist()
         collapsed_cols += event_cols
         agg_dict.update({col: (col, "sum") for col in event_cols})
 
@@ -339,7 +415,7 @@ def collapse_plays(df, level="possession", event=False):
         raise ValueError(f"level must be possession or chance, but get {level}.")
 
     collapsed["SecLineup"] = collapsed.groupby(
-        ["GameId", "PossCount"] + column_list("id")
+        ["GameId", "PossCount"] + column_list("offdef_id")
     )["SecSinceLastPlay"].transform("sum")
 
     result = collapsed.groupby(["GameId", "PossCount"]).agg(**agg_dict)
@@ -349,7 +425,7 @@ def collapse_plays(df, level="possession", event=False):
     assert len(result.index) == len(players.index)
     result = pd.merge(
         result,
-        players[["GameId", "PossCount"] + column_list("id")],
+        players[["GameId", "PossCount"] + column_list("offdef_id")],
         on=["GameId", "PossCount"],
     )
     # TODO: use original scoremargin
@@ -368,14 +444,14 @@ def collapse_plays(df, level="possession", event=False):
 
 def add_dob(df, player):
     df["Pts"] = np.where(df["HomeOff"] == 1, df["HomePts"], df["AwayPts"])
-    df = df.rename(
-        columns=dict(
-            zip(
-                column_list("off_id") + column_list("def_id"),
-                column_list("off_id_abbr") + column_list("def_id_abbr"),
-            )
-        )
-    )
+    # df = df.rename(
+    #     columns=dict(
+    #         zip(
+    #             column_list("off_id") + column_list("def_id"),
+    #             column_list("off_id_abbr") + column_list("def_id_abbr"),
+    #         )
+    #     )
+    # )
     # df["TimeRemain"] = df["SecRemainGame"]
 
     # df.loc[df["Pts"] > 3, "Pts"] = 3

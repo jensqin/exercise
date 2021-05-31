@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import numpy as np
 import pandas as pd
 import pandera as pa
@@ -18,6 +19,7 @@ from nbastats.common.playbyplay import (
     collapse_plays,
     preprocess_play,
     add_dob,
+    type_dict,
 )
 
 
@@ -94,7 +96,7 @@ def zq_collapse_plays(df, level="possession"):
     result["ScoreMargin"] = result["ScoreMargin"] * np.where(
         result["HomeOff"] == 1, 1, -1
     )
-    return result.reset_index()
+    return result.reset_index(drop=True)
 
 
 def zq_categorical_encoding(df, from_s3=True):
@@ -104,11 +106,11 @@ def zq_categorical_encoding(df, from_s3=True):
     # df[column_names("event")] = df[column_names("event")].apply(
     #     lambda x: events_series[x]
     # )
-    player_id_cols = column_list("off_id_abbr") + column_list("def_id_abbr")
+    player_id_cols = column_list("off_id") + column_list("def_id")
     if from_s3:
         team_encoder = encoder_from_s3("team")
         player_encoder = encoder_from_s3("player")
-        event_encoder = encoder_from_s3("event")
+        # event_encoder = encoder_from_s3("event")
     else:
         team_encoder = OrdinalEncoder()
         team_encoder.fit(df[["OffTeam", "DefTeam"]])
@@ -152,9 +154,10 @@ def zq_categorical_encoding(df, from_s3=True):
 #     )
 #     return df
 
+
 def zq_output(df):
     """summarise the data"""
-    pass
+    return df.astype(type_dict)
 
 
 def zq_pipeline(level="possession"):
@@ -166,15 +169,29 @@ def zq_pipeline(level="possession"):
     play = pd.read_sql(parse_sql(SQL_PATH["play"], False), engine)
     player = pd.read_sql(parse_sql(SQL_PATH["player"], False), engine)
     play = preprocess_play(play)
-    play = encode_player_event(play)
+    play = encode_player_event(play, from_s3=True)
     collapsed = collapse_plays(play, level=level, event=True)
     result = add_dob(collapsed, player)
-    return zq_categorical_encoding(result, from_s3=True)
+    result = zq_categorical_encoding(result, from_s3=True)
+    return zq_output(result)
 
 
 if __name__ == "__main__":
-    df = zq_pipeline()
-    print(df.head())
-    # wr.s3.to_parquet(
-    #     df=df, path=S3_FOLDER + "zq_play", dataset=True, mode="overwrite"
-    # )
+    args = argparse.ArgumentParser()
+    args.add_argument("--level", type=str, default="possession")
+    args.add_argument("--output_mode", type=str, default="")
+    args = args.parse_args()
+    df = zq_pipeline(level=args.level)
+    if args.output_mode:
+        wr.s3.to_parquet(
+            df=df,
+            path=S3_FOLDER + f"zq_{args.level}",
+            dataset=True,
+            mode=args.output_mode,
+            # table="proc_play",
+            # database="nbastats",
+        )
+        print("Uploaded parquet file to S3.")
+    else:
+        print(df.head())
+        print(df.dtypes)

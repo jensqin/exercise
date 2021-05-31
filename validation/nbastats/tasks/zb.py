@@ -1,4 +1,6 @@
 import sys
+import argparse
+from bla_python_db_utilities import parser
 import numpy as np
 import pandas as pd
 import awswrangler as wr
@@ -14,10 +16,10 @@ from settings import ENGINE_CONFIG, SQL_PATH, S3_FOLDER
 from nbastats.common.encoder import encoder_from_s3
 from nbastats.common.playbyplay import (
     column_list,
-    player_homeaway_to_offdef,
     preprocess_play,
     collapse_plays,
     add_dob,
+    type_dict,
 )
 
 
@@ -31,11 +33,11 @@ def usage_player_id(df, collapsed):
     df = df.loc[
         :,
         ["GameId", "PossCount", "HomeOff", "Eventmsgtype"]
-        + column_list("id")
-        + column_list("event"),
+        + column_list("offdef_id")
+        + column_list("offdef_event"),
     ]
-    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("event")] = df.loc[
-        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("event")
+    df.loc[df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("offdef_event")] = df.loc[
+        df["Eventmsgtype"].isin([1, 2, 3, 5]), column_list("offdef_event")
     ].replace({"Ast": None})
     df = df.drop(columns="Eventmsgtype")
 
@@ -44,27 +46,12 @@ def usage_player_id(df, collapsed):
     # df[column_names("id")] = df[column_names("id")].fillna(0)
 
     # only one player uses a possession
-    assert (
-        df.loc[df["HomeOff"] == 0, column_list("away_event")].notna().sum(axis=1) < 2
-    ).all()
-    assert (
-        df.loc[df["HomeOff"] == 1, column_list("home_event")].notna().sum(axis=1) < 2
-    ).all()
+    assert (df[column_list("off_event")].notna().sum(axis=1) < 2).all()
 
-    UsgId0 = np.where(
-        df.loc[df["HomeOff"] == 0, column_list("away_event")].notna(),
-        df.loc[df["HomeOff"] == 0, column_list("away_id")],
-        0,
-    ).sum(axis=1)
-    UsgId1 = np.where(
-        df.loc[df["HomeOff"] == 1, column_list("home_event")].notna(),
-        df.loc[df["HomeOff"] == 1, column_list("home_id")],
-        0,
+    df["UsageId"] = np.where(
+        df[column_list("off_event")].notna(), df[column_list("off_id")], 0,
     ).sum(axis=1)
 
-    # df["PlayerId"] = None
-    df.loc[df["HomeOff"] == 0, "UsageId"] = UsgId0
-    df.loc[df["HomeOff"] == 1, "UsageId"] = UsgId1
     # df["PlayerId"] = df["PlayerId"].fillna(0)
     # df["UsageId"] = np.where(df["HomeOff"] == 1, UsgId1, UsgId0)
 
@@ -73,9 +60,6 @@ def usage_player_id(df, collapsed):
         .groupby(["GameId", "PossCount"])["UsageId"]
         .transform("last")
     )
-
-    df = player_homeaway_to_offdef(df)
-    collapsed = player_homeaway_to_offdef(collapsed)
 
     # homeaway to offdef
     # df.loc[df["HomeOff"] == 1, column_list("off_id") + column_list("def_id")] = df.loc[
@@ -100,9 +84,9 @@ def usage_player_id(df, collapsed):
     poss_usg = df.loc[
         df["UsageId"].notna(), ["GameId", "PossCount", "UsageId"]
     ].drop_duplicates()
-    assert len(poss_usg.index) == len(
-        poss_usg[["GameId", "PossCount"]].drop_duplicates().index
-    )
+    # assert len(poss_usg.index) == len(
+    #     poss_usg[["GameId", "PossCount"]].drop_duplicates().index
+    # )
 
     # result = pd.merge(
     #     collapsed[
@@ -129,6 +113,9 @@ def usage_player_id(df, collapsed):
     #     how="left",
     # )
     result = pd.merge(collapsed, poss_usg, on=["GameId", "PossCount"], how="left")
+    assert len(result.index) == len(
+        collapsed.index
+    ), "Number of rows changed after merging!"
 
     # TODO: apply PFoul split to substitutes in possessions
     # 0.9957044673539519
@@ -154,7 +141,7 @@ def usage_player_id(df, collapsed):
 
 def zb_categorical_encoding(df, from_s3=False):
     """encode categorical variables"""
-    player_id_cols = column_list("off_id_abbr") + column_list("def_id_abbr")
+    player_id_cols = column_list("off_id") + column_list("def_id")
     if from_s3:
         team_encoder = encoder_from_s3("team")
         player_encoder = encoder_from_s3("player")
@@ -178,51 +165,8 @@ def zb_categorical_encoding(df, from_s3=False):
 
 def zb_output(df):
     """zb output"""
-    col_dict = {
-        "GameId": "int32",
-        "PossCount": "float32",
-        "Season": "int32",
-        "GameDate": "datetime64",
-        "GameType": "int32",
-        "OffTeam": "float32",
-        "DefTeam": "float32",
-        "Period": "int32",
-        "HomeOff": "float32",
-        "SecRemainGame": "int32",
-        "StartEvent": "str",
-        "EndEvent": "str",
-        "HomeScore": "int32",
-        "AwayScore": "int32",
-        "HomePts": "float32",
-        "AwayPts": "float32",
-        "UsageId": "float32",
-        "Pts": "float32",
-        "Duration": "int32",
-        "ShotDistance": "float32",
-        "ShotAngle": "float32",
-        "ScoreMargin": "float32",
-        "P1": "float32",
-        "P2": "float32",
-        "P3": "float32",
-        "P4": "float32",
-        "P5": "float32",
-        "P6": "float32",
-        "P7": "float32",
-        "P8": "float32",
-        "P9": "float32",
-        "P10": "float32",
-        "Age1": "float32",
-        "Age2": "float32",
-        "Age3": "float32",
-        "Age4": "float32",
-        "Age5": "float32",
-        "Age6": "float32",
-        "Age7": "float32",
-        "Age8": "float32",
-        "Age9": "float32",
-        "Age10": "float32",
-    }
-    return df[col_dict.keys()].astype(col_dict)
+    type_dict.update({"UsageId": "int32"})
+    return df[type_dict.keys()].astype(type_dict)
 
 
 def zb_pipeline(level="possession"):
@@ -242,13 +186,21 @@ def zb_pipeline(level="possession"):
 
 
 if __name__ == "__main__":
-    df = zb_pipeline(level="possession")
-    wr.s3.to_parquet(
-        df=df,
-        path=S3_FOLDER + "zb_possession",
-        dataset=True,
-        mode="overwrite",
-        # table="proc_play",
-        # database="nbastats",
-    )
-    print("Uploaded parquet file to S3.")
+    args = argparse.ArgumentParser()
+    args.add_argument("--level", type=str, default="possession")
+    args.add_argument("--output_mode", type=str, default="")
+    args = args.parse_args()
+    df = zb_pipeline(level=args.level)
+    if args.output_mode:
+        wr.s3.to_parquet(
+            df=df,
+            path=S3_FOLDER + f"zb_{args.level}",
+            dataset=True,
+            mode=args.output_mode,
+            # table="proc_play",
+            # database="nbastats",
+        )
+        print("Uploaded parquet file to S3.")
+    else:
+        print(df.head())
+        print(df.dtypes)
