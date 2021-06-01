@@ -4,6 +4,7 @@ import numpy as np
 from numpy.lib.npyio import load
 import pandas as pd
 import pandera as pa
+from patsy import dmatrix
 from pandera.typing import DataFrame
 from sklearn.preprocessing import OneHotEncoder
 import sqlalchemy
@@ -119,38 +120,38 @@ def column_list(key):
 
 
 type_dict = {
-    "GameId": "int32",
-    "PossCount": "int32",
-    "Season": "int32",
+    "GameId": "int64",
+    "PossCount": "int64",
+    "Season": "int64",
     "GameDate": "datetime64",
-    "GameType": "int32",
-    "OffTeam": "int32",
-    "DefTeam": "int32",
-    # "Period": "int32",
+    "GameType": "int64",
+    "OffTeam": "int64",
+    "DefTeam": "int64",
+    # "Period": "int64",
     "HomeOff": "float32",
     "SecRemainGame": "float32",
     "StartEvent": "str",
     "EndEvent": "str",
-    # "HomeScore": "int32",
-    # "AwayScore": "int32",
+    # "HomeScore": "int64",
+    # "AwayScore": "int64",
     # "HomePts": "float32",
     # "AwayPts": "float32",
-    # "UsageId": "int32",
+    # "UsageId": "int64",
     "Pts": "float32",
-    "Duration": "int32",
+    "Duration": "int64",
     "ShotDistance": "float32",
     "ShotAngle": "float32",
     "ScoreMargin": "float32",
-    "P1": "int32",
-    "P2": "int32",
-    "P3": "int32",
-    "P4": "int32",
-    "P5": "int32",
-    "P6": "int32",
-    "P7": "int32",
-    "P8": "int32",
-    "P9": "int32",
-    "P10": "int32",
+    "P1": "int64",
+    "P2": "int64",
+    "P3": "int64",
+    "P4": "int64",
+    "P5": "int64",
+    "P6": "int64",
+    "P7": "int64",
+    "P8": "int64",
+    "P9": "int64",
+    "P10": "int64",
     "Age1": "float32",
     "Age2": "float32",
     "Age3": "float32",
@@ -440,6 +441,24 @@ def collapse_plays(df, level="possession", event=False):
         result["HomeOff"] == 1, 1, -1
     )
     return result.reset_index(drop=True)
+
+
+def build_spline(df):
+    """build B spline"""
+    splines_config = {
+        # "cols": column_list("age"),
+        "knots": [25, 33],
+        "degree": 3,
+    }
+    age_col = df[column_list("age")].stack()
+    trans = dmatrix(
+        "bs(train, knots, degree, include_intercept=False)",
+        {"train": age_col}.update(splines_config),
+        return_type="dataframe",
+    )
+    trans = trans.drop(columns="Intercept")
+    trans.columns = [f"_{i}" for i in len(trans.columns)]
+    return trans
 
 
 def add_dob(df, player):
