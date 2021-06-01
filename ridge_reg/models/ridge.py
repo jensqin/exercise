@@ -143,24 +143,12 @@ class NBARidge(NBAEncoder):
             {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
             {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
         ]
-        # dense_param = [
-        #     {"params": self.fc.parameters(), "weight_decay": 0},
-        #     {"params": self.off_team.parameters(), "weight_decay": self.wd[0]},
-        #     {"params": self.def_team.parameters(), "weight_decay": self.wd[1]},
-        # ]
-        # sparse_param = [
-        #     {"params": self.off_player.parameters(), "weight_decay": self.wd[2]},
-        #     {"params": self.off_player_age.parameters(), "weight_decay": self.wd[3]},
-        #     {"params": self.def_player.parameters(), "weight_decay": self.wd[4]},
-        #     {"params": self.def_player_age.parameters(), "weight_decay": self.wd[5]},
-        # ]
-        optimizer = AdamW(opt_param, lr=self.lr)
         # dense_opt = AdamW(dense_param, lr=self.lr)
         # sparse_opt = Adamax(sparse_param, lr=self.lr)
         # dense_scheduler = OneCycleLR(dense_opt, max_lr=0.1, total_steps=1000)
         # sparse_scheduler = OneCycleLR(sparse_opt, max_lr=0.1, total_steps=1000)
         # return [dense_opt, sparse_opt], [dense_scheduler, sparse_scheduler]
-        return optimizer
+        return AdamW(opt_param, lr=self.lr)
 
     # def mse_loss(self, batch):
     #     """

@@ -494,10 +494,10 @@ def extract_player_embeddings(model_cls, ckpt_path):
 
 
 def save_output(model, file_name):
-    x, _ = load_nba(path="data/nba_2018/nba_2018_test.csv", to_tensor=True)
-    model.freeze()
-    yhat = model(x, return_embedding=False)
     if file_name:
+        x, _ = load_nba(path="data/nba_2018/nba_2018_test.csv", to_tensor=True)
+        model.freeze()
+        yhat = model(x, return_embedding=False)
         path = f"data/output/{file_name}.npy"
         np.save(path, yhat.numpy().squeeze())
         print(f"Saved file to {path}.")

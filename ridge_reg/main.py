@@ -55,8 +55,9 @@ def load_nba_data(test_size=0.2):
             "P10",
         ]
     ].astype(
-        "int32"
+        "int64"
     )
+    # df = df[df["Season"] >= 2020]
     split_nrow = math.floor(len(df.index) * (1 - test_size))
     train = df[0:split_nrow]
     test = df[split_nrow:-1]
