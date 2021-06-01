@@ -34,7 +34,7 @@ class NBADataset(Dataset):
             ["P6", "P7", "P8", "P9", "P10"],
             ["Age6", "Age7", "Age8", "Age9", "Age10"],
         ]
-        y_cols = ["y"]
+        y_cols = ["Pts"]
         self.x = [self.pd_to_tensor(self.df[col]) for col in x_cols]
         self.y = self.pd_to_tensor(self.df[y_cols])
 

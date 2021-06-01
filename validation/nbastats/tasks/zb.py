@@ -1,4 +1,5 @@
 import sys
+import os
 import argparse
 from bla_python_db_utilities import parser
 import numpy as np
@@ -204,3 +205,4 @@ if __name__ == "__main__":
     else:
         print(df.head())
         print(df.dtypes)
+    os.system('say "Your Python Program has Finished"')

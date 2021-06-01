@@ -114,7 +114,7 @@ def transform_to_array(df, to_tensor=True):
         ["P6", "P7", "P8", "P9", "P10"],
         ["Age6", "Age7", "Age8", "Age9", "Age10"],
     ]
-    y_cols = ["y"]
+    y_cols = ["Pts"]
     x = [df[col].values for col in x_cols]
     y = df[y_cols].values
     if to_tensor:

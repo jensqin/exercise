@@ -20,7 +20,6 @@ from modules.core import (
     NBASetEncoder,
     NBAEmbEncoder,
     SetEmbeddingBag,
-    BiInteraction,
 )
 from models.ridge import NBARidge
 from utils import load_nba, train_val_test_split
