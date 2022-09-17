@@ -1,6 +1,4 @@
 # selection sort, O(n^2)
-from re import S
-
 
 def selection_sort(input, i=None):
     if i is None:

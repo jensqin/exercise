@@ -11,3 +11,26 @@ def binary_search(input, target):
         else:
             left = mid + 1
     return -1
+
+def bisect_left(x, target):
+    l = 0
+    r = len(x) - 1
+    while l <= r:
+        mid = (l + r) // 2
+        if x[mid] >= target:
+            r = mid - 1
+        else:
+            l = mid + 1
+    return l
+
+def biset_right(x, target):
+    l = 0
+    r = len(x) - 1
+    while l <= r:
+        mid = (l + r) // 2
+        if x[mid] <= target:
+            l = mid + 1
+        else:
+            r = mid - 1
+    return l
+    
