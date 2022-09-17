@@ -1,4 +1,4 @@
-from metaflow import FlowSpec, step
+from metaflow import FlowSpec, step, batch
 
 
 class ForeachFlow(FlowSpec):
@@ -8,19 +8,13 @@ class ForeachFlow(FlowSpec):
 
     @step
     def start(self):
-        self.titles = [
-            'football', 'basketball', 'soccer'
-        ]
-        self.next(self.a, foreach='titles')
+        self.titles = ["football", "basketball", "soccer"]
+        self.next(self.a, foreach="titles")
 
+    @batch(cpu=1, memory=4000)
     @step
     def a(self):
-        self.title = f'{self.input} processed'
-        self.next(self.b)
-
-    @step
-    def b(self):
-        self.title += ' done'
+        self.title = f"{self.input} processed"
         self.next(self.join)
 
     @step
@@ -30,7 +24,8 @@ class ForeachFlow(FlowSpec):
 
     @step
     def end(self):
-        print('\n'.join(self.results))
+        print("\n".join(self.results))
+
 
 if __name__ == "__main__":
     ForeachFlow()
