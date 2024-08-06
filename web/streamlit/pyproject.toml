@@ -1,0 +1,15 @@
+[project]
+name = "streamlit"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Zhen Qin", email = "qinzhensir@outlook.com"},
+]
+dependencies = ["streamlit>=1.37.1"]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false
