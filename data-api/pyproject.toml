@@ -6,7 +6,8 @@ authors = [
     {name = "Zhen Qin", email = "qinzhensir@outlook.com"},
 ]
 dependencies = [
-    "fastapi>=0.113.0",
+    "fastapi[standard]>=0.113.0",
+    "ruff>=0.6.4",
 ]
 requires-python = "==3.12.*"
 readme = "README.md"
