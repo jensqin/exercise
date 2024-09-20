@@ -30,7 +30,7 @@ include = ["src"]
 fixable = ["ALL"]
 
 [tool.ruff.lint.isort]
-forced-separate = ["bla_soccer_api"]
+forced-separate = ["data_api"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
