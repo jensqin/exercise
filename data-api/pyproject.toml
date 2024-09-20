@@ -8,6 +8,7 @@ authors = [
 dependencies = [
     "fastapi[standard]>=0.113.0",
     "requests>=2.32.3",
+    "numpyro>=0.15.3",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
