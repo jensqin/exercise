@@ -14,7 +14,6 @@ requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
-
 [tool.pdm]
 distribution = false
 
@@ -23,3 +22,15 @@ test = [
     "pytest>=8.3.3",
     "ruff>=0.6.6",
 ]
+
+[tool.pyright]
+include = ["src"]
+
+[tool.ruff.lint]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+forced-separate = ["bla_soccer_api"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
