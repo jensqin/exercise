@@ -1,18 +1,24 @@
 [project]
 name = "data-api"
-version = "0.1.0"
+version = "0.0.0"
 description = "Default template for PDM package"
 authors = [
     {name = "Zhen Qin", email = "qinzhensir@outlook.com"},
 ]
 dependencies = [
     "fastapi[standard]>=0.113.0",
-    "ruff>=0.6.4",
+    "requests>=2.32.3",
 ]
-requires-python = "==3.12.*"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
 
 [tool.pdm]
 distribution = false
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=8.3.3",
+    "ruff>=0.6.6",
+]
